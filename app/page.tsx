@@ -57,6 +57,7 @@ const ideas = [
 function Logo(){return <div className="logo"><i><Sparkles size={18}/></i><b>灵智云</b><em>AI</em></div>}
 
 export default function Home(){
+  const [entered,setEntered]=useState(false);
   const [view,setView]=useState<MainView>("models");
   const [type,setType]=useState<ModelType>("全部");
   const [vendor,setVendor]=useState("全部厂商");
@@ -70,6 +71,7 @@ export default function Home(){
   const [amount,setAmount]=useState(100);
   const filtered=useMemo(()=>models.filter(m=>(type==="全部"||type==="我的"&&pinned.includes(m.id)||m.type===type)&&(vendor==="全部厂商"||m.vendor===vendor)&&(m.name+m.vendor+m.desc).toLowerCase().includes(query.toLowerCase())).sort((a,b)=>Number(pinned.includes(b.id))-Number(pinned.includes(a.id))),[type,vendor,query,pinned]);
   function send(){const text=prompt.trim();if(!text)return;setHistory(v=>[...v,{role:"user",text},{role:"ai",text:`已通过 ${selected.name} 接收你的任务。当前为演示模式，配置 New API 后会返回真实生成结果。`}]);setPrompt("")}
+  if(!entered)return <Landing onStart={()=>setEntered(true)}/>;
   return <main className="app">
     <aside className={`rail ${mobile?"open":""}`}>
       <div className="rail-head"><Logo/><button onClick={()=>setMobile(false)} aria-label="关闭导航"><X size={19}/></button></div>
@@ -136,6 +138,78 @@ export default function Home(){
 
     {modal&&<div className="overlay" onMouseDown={()=>setModal(null)}><div className={`modal ${modal}`} onMouseDown={e=>e.stopPropagation()}><header><div><i>{modal==="notice"?<Bell/>:<WalletCards/>}</i><span><b>{modal==="notice"?"系统公告":"在线充值"}</b><small>{modal==="notice"?"产品更新与服务通知":"充值余额实时到账"}</small></span></div><button onClick={()=>setModal(null)}><X size={19}/></button></header>{modal==="notice"?<div className="notice-list">{["无限画布与多模型协作正式上线","长期记忆功能开放体验","视频生成速度与清晰度优化"].map((x,i)=><button key={x}><i>{i===0?"新":"更"}</i><span><b>{x}</b><small>灵智云产品团队 · 2026-09-{18-i}</small></span><em>{i===0&&"未读"}</em></button>)}</div>:<div className="pay"><div className="paytabs"><button className="active">在线支付</button><button>卡密充值</button></div><label>选择充值金额</label><div className="amounts">{[20,50,100,200,500,1000].map(x=><button className={amount===x?"active":""} onClick={()=>setAmount(x)} key={x}><b>¥ {x}</b><small>到账 {x} 元</small></button>)}</div><label>支付方式</label><div className="paytypes"><button className="active"><i className="wechat">微</i>微信支付<Check size={16}/></button><button><i className="alipay">支</i>支付宝</button></div><button className="confirm">确认充值 ¥ {amount}</button><p>充值即代表同意《充值服务协议》，虚拟余额不支持提现</p></div>}</div></div>}
   </main>
+}
+
+const orbitModels = ["GPT-5","Claude","Gemini","DeepSeek","Veo 3","FLUX","可灵","Suno","Qwen","GLM","MJ V7","海螺","Kimi","通义","豆包","Hunyuan"];
+const landingAgents = [
+  ["01","一键生成漫剧","输入文案或参考图，AI 自动拆分镜头、生成角色、配音、合成视频，全流程一键完成。","▣"],
+  ["02","智能长视频创作","多张参考图加文字描述，精准控制画面内容与时长，生成连贯的专业级长视频。","✣"],
+  ["03","风格一键切换","赛博朋克、水墨国风、3D 动画、写实电影，海量风格随心切换。","◉"],
+  ["04","画面配音自动匹配","智能语音合成与画面节奏匹配，解说版、剧情版自由选择。","♫"],
+];
+const capabilities = [
+  ["智能对话","主流大模型自由切换，多轮推理、代码、写作、翻译一站搞定。",MessageSquareText],
+  ["图像创作","多款绘画模型任选，输入文字即刻出图，写实、插画、3D 风格随心切换。",ImageIcon],
+  ["视频生成","主流视频模型任选，文字或图片一键生成电影级视频。",Video],
+  ["语音合成","多语言、多音色智能配音，从旁白到对白，拥有专业级声音。",Headphones],
+];
+const inspirationTiles = [
+  ["未来城市的雨夜","赛博朋克","电影质感"],["极简产品视觉","商业摄影","品牌设计"],
+  ["山海之间的旅人","中国风","唯美意境"],["复古胶片少女","时尚人像","真实感"],
+  ["微缩森林世界","奇幻艺术","光影美学"],["机甲角色设定","3D 国漫","CG 质感"],
+  ["海岛度假写真","写实摄影","氛围感"],["月球咖啡馆","创意广告","超现实"],
+  ["东方庭院","空间设计","建筑美学"],["霓虹舞台","舞台视觉","音乐"],
+  ["未来穿搭","AI 换装","潮流"],["水墨飞鸟","国风动画","意境"],
+  ["玻璃香水海报","电商视觉","高级感"],["城市纪实","人文摄影","故事感"],
+  ["星际旅行日志","科幻概念","叙事"],["纸雕童话世界","绘本","手工质感"],
+];
+
+function Landing({onStart}:{onStart:()=>void}){
+  return <div className="landing">
+    <header className="landing-nav">
+      <Logo/>
+      <nav><button><MessageCircle size={15}/>客服</button><button><Code2 size={15}/>开发者</button><button className="nav-start" onClick={onStart}>开始使用 <ArrowUp size={15}/></button><button>◎ 中文</button></nav>
+    </header>
+    <section className="hero">
+      <div className="hero-grid"/>
+      <div className="orbit orbit-a"/><div className="orbit orbit-b"/>
+      <div className="orbit-models">{orbitModels.map((m,i)=><div style={{"--i":i} as React.CSSProperties} key={m}><i>{m.slice(0,1)}</i><span>{m}</span></div>)}</div>
+      <div className="hero-side left"><i>M</i><b>多模态全能参考</b><span>文本、图片、视频与音频任意组合</span></div>
+      <div className="hero-side right"><i>V</i><b>Veo 3 视频生成</b><span>原生音效与电影级画面表现</span></div>
+      <div className="hero-center">
+        <label><i/> 新一代 AI 平台</label>
+        <h1>让 AI 为你<br/><span>智能创作</span></h1>
+        <p>聚合全球领先大模型，智能对话 / 图像创作 / 视频生成 / AI 智能体，<br/>一个平台，释放无限可能</p>
+        <div className="hero-actions"><button onClick={onStart}>开始使用 <ArrowUp size={17}/></button><button><MessageCircle size={17}/>商务合作</button></div>
+        <button className="newgift">✦ 注册领取新人免费大礼包，AI 绘画 / 视频 / 对话免费开用 <ArrowUp size={14}/></button>
+        <div className="hero-stats"><span><b>500+</b><small>AI 模型</small></span><span><b>10K+</b><small>创作者</small></span><span><b>∞</b><small>创造力</small></span></div>
+      </div>
+    </section>
+
+    <section className="dark-section agent-section">
+      <SectionTitle eyebrow="AI AGENTS" line1="不只是工具" line2="是你的创作搭档" desc="从文案到视频、从灵感到成品 —— AI 智能体帮你全流程搞定，效率提升 10 倍。"/>
+      <div className="landing-cards agent-cards">{landingAgents.map(a=><article key={a[0]}><span className="num">{a[0]}</span><i>{a[3]}</i><h3>{a[1]}</h3><p>{a[2]}</p><button onClick={onStart}>立即体验 <ArrowUp size={14}/></button></article>)}</div>
+    </section>
+
+    <section className="dark-section platform-section">
+      <SectionTitle eyebrow="PLATFORM" line1="四大核心能力，" line2="一个平台"/>
+      <div className="landing-cards capability-cards">{capabilities.map(([name,desc,Icon])=><article key={name as string}><i><Icon size={20}/></i><h3>{name as string}</h3><p>{desc as string}</p></article>)}</div>
+    </section>
+
+    <section className="dark-section inspiration-section">
+      <SectionTitle eyebrow="INSPIRATION" line1="灵感广场" desc="看看大家都在用 AI 创作什么"/>
+      <div className="masonry">{inspirationTiles.map((x,i)=><article className={`tile tile-${i%6}`} key={x[0]}><div className="tile-art"><i>{["✦","◈","☾","◎","❋","△"][i%6]}</i></div><h3>{x[0]}</h3><div><span>{x[1]}</span><span>{x[2]}</span></div></article>)}</div>
+      <button className="more-inspiration" onClick={onStart}>加载更多灵感 <ChevronDown size={15}/></button>
+    </section>
+
+    <section className="landing-cta"><div className="cta-grid"/><h2>现在就开始<br/><span>你的 AI 创作之旅</span></h2><p>500+ 顶尖模型 / AI 智能体 / 灵感广场 —— 一站直达</p><div><button onClick={onStart}>立即注册 <ArrowUp size={17}/></button><button><MessageCircle size={17}/>联系客服</button></div></section>
+    <footer className="landing-footer"><Logo/><div><span>企业级 AI 接口服务平台</span><a>联系客服</a><a>举报与反馈</a><a>关于我们</a><a>隐私政策</a><a>用户协议</a></div><div className="payments"><i>VISA</i><i>MC</i><i>支付宝</i><i>微信支付</i></div><p>Powered by <a href="https://github.com/QuantumNous/new-api" target="_blank">New API</a></p></footer>
+    <button className="float-service"><MessageCircle size={21}/></button>
+  </div>
+}
+
+function SectionTitle({eyebrow,line1,line2,desc}:{eyebrow:string;line1:string;line2?:string;desc?:string}){
+ return <div className="section-title"><label>{eyebrow}</label><h2>{line1}{line2&&<><br/><span>{line2}</span></>}</h2>{desc&&<p>{desc}</p>}</div>
 }
 
 function ChatPanel({model,prompt,setPrompt,history,send}:{model:Model;prompt:string;setPrompt:(s:string)=>void;history:{role:"user"|"ai";text:string}[];send:()=>void}){
