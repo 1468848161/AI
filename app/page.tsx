@@ -6,10 +6,11 @@ import {
   Code2, Compass, Copy, FileText, Headphones, Image as ImageIcon, KeyRound,
   LayoutGrid, Menu, MessageCircle, MessageSquareText, MoreHorizontal, Paperclip,
   Pin, PinOff, Plus, Search, Send, Settings2, Sparkles, SquarePen, Upload,
-  UserRound, UsersRound, Video, WalletCards, WandSparkles, X, Zap,
+  UserRound, UsersRound, Video, WalletCards, WandSparkles, X, Zap, BarChart3,
+  ShieldCheck, Package, ShoppingCart, Database, Megaphone, TicketCheck,
 } from "lucide-react";
 
-type MainView = "models" | "agents" | "inspiration" | "api" | "mine";
+type MainView = "models" | "agents" | "inspiration" | "api" | "mine" | "admin";
 type ModelType = "全部" | "聊天" | "图片" | "视频" | "音频" | "我的";
 type Modal = "notice" | "recharge" | null;
 
@@ -84,6 +85,8 @@ export default function Home(){
         <button><FileText size={19}/>生成记录</button>
         <button><WalletCards size={19}/>消费记录</button>
         <button><UsersRound size={19}/>团队账号</button>
+        <label>管理</label>
+        <button className={view==="admin"?"active":""} onClick={()=>setView("admin")}><ShieldCheck size={19}/>运营后台<em>ADMIN</em></button>
       </nav>
       <div className="rail-foot">
         <button onClick={()=>setModal("recharge")}><WalletCards size={17}/><span><b>账户余额</b><small>¥ 128.60</small></span><strong>充值</strong></button>
@@ -93,7 +96,7 @@ export default function Home(){
 
     <section className="main">
       <header className="topbar">
-        <div><button className="hamb" onClick={()=>setMobile(true)}><Menu size={20}/></button><h1>{view==="models"?"大模型":view==="agents"?"智能体":view==="inspiration"?"灵感广场":view==="api"?"开放 API":"我的作品"}</h1></div>
+        <div><button className="hamb" onClick={()=>setMobile(true)}><Menu size={20}/></button><h1>{view==="models"?"大模型":view==="agents"?"智能体":view==="inspiration"?"灵感广场":view==="api"?"开放 API":view==="admin"?"运营后台":"我的作品"}</h1></div>
         <div className="top-actions"><button onClick={()=>setModal("notice")} className="notice"><Bell size={18}/><i>3</i></button><button className="invite"><Zap size={16}/>邀请有礼</button><button className="support"><MessageCircle size={16}/>在线客服</button><button onClick={()=>setModal("recharge")} className="recharge">在线充值</button><span className="top-avatar">陈</span></div>
       </header>
 
@@ -134,6 +137,7 @@ export default function Home(){
         <PageFilters tabs={["全部","视频","图片","音频","灵感"]} placeholder="搜索我的作品"/>
         <div className="works-empty"><ImageIcon size={34}/><h3>还没有作品</h3><p>作品默认保留 30 天，重要内容请及时下载</p><button onClick={()=>setView("models")}><Sparkles size={16}/>去创作第一个作品</button></div>
       </ContentPage>}
+      {view==="admin"&&<AdminConsole/>}
     </section>
 
     {modal&&<div className="overlay" onMouseDown={()=>setModal(null)}><div className={`modal ${modal}`} onMouseDown={e=>e.stopPropagation()}><header><div><i>{modal==="notice"?<Bell/>:<WalletCards/>}</i><span><b>{modal==="notice"?"系统公告":"在线充值"}</b><small>{modal==="notice"?"产品更新与服务通知":"充值余额实时到账"}</small></span></div><button onClick={()=>setModal(null)}><X size={19}/></button></header>{modal==="notice"?<div className="notice-list">{["无限画布与多模型协作正式上线","长期记忆功能开放体验","视频生成速度与清晰度优化"].map((x,i)=><button key={x}><i>{i===0?"新":"更"}</i><span><b>{x}</b><small>灵智云产品团队 · 2026-09-{18-i}</small></span><em>{i===0&&"未读"}</em></button>)}</div>:<div className="pay"><div className="paytabs"><button className="active">在线支付</button><button>卡密充值</button></div><label>选择充值金额</label><div className="amounts">{[20,50,100,200,500,1000].map(x=><button className={amount===x?"active":""} onClick={()=>setAmount(x)} key={x}><b>¥ {x}</b><small>到账 {x} 元</small></button>)}</div><label>支付方式</label><div className="paytypes"><button className="active"><i className="wechat">微</i>微信支付<Check size={16}/></button><button><i className="alipay">支</i>支付宝</button></div><button className="confirm">确认充值 ¥ {amount}</button><p>充值即代表同意《充值服务协议》，虚拟余额不支持提现</p></div>}</div></div>}
@@ -211,6 +215,90 @@ function Landing({onStart}:{onStart:()=>void}){
 function SectionTitle({eyebrow,line1,line2,desc}:{eyebrow:string;line1:string;line2?:string;desc?:string}){
  return <div className="section-title"><label>{eyebrow}</label><h2>{line1}{line2&&<><br/><span>{line2}</span></>}</h2>{desc&&<p>{desc}</p>}</div>
 }
+
+type AdminSection="overview"|"users"|"tenants"|"models"|"orders"|"finance"|"tasks"|"content"|"tickets"|"roles"|"settings";
+const adminNav=[
+ ["overview","经营概览",BarChart3],["users","用户管理",UsersRound],["tenants","租户与团队",Database],
+ ["models","模型与渠道",Boxes],["orders","套餐与订单",ShoppingCart],["finance","余额与账单",WalletCards],
+ ["tasks","生成任务",Zap],["content","内容审核",ShieldCheck],["tickets","工单客服",TicketCheck],
+ ["roles","角色权限",KeyRound],["settings","系统配置",Settings2],
+] as const;
+const adminUsers=[
+ ["U10086","陈先生","chen@example.com","企业版","¥128.60","正常","2026-09-21"],
+ ["U10085","林晓","lin@example.com","专业版","¥56.20","正常","2026-09-21"],
+ ["U10084","设计工作室","studio@example.com","团队版","¥869.00","正常","2026-09-20"],
+ ["U10083","王先生","wang@example.com","免费版","¥0.00","受限","2026-09-20"],
+];
+const adminOrders=[
+ ["SO20260921001","设计工作室","企业版年付","¥3,999.00","微信支付","已支付","2026-09-21 10:28"],
+ ["SO20260921002","林晓","余额充值","¥200.00","支付宝","已支付","2026-09-21 09:16"],
+ ["SO20260920018","陈先生","专业版月付","¥99.00","微信支付","待支付","2026-09-20 21:42"],
+];
+
+function AdminConsole(){
+ const [section,setSection]=useState<AdminSection>("overview");
+ const [keyword,setKeyword]=useState("");
+ const [enabled,setEnabled]=useState<Record<string,boolean>>({OpenAI:true,Anthropic:true,Google:true,DeepSeek:true});
+ const [toast,setToast]=useState("");
+ function notify(text:string){setToast(text);setTimeout(()=>setToast(""),1800)}
+ return <div className="admin-console">
+   <aside className="admin-nav"><div><b>SaaS 管理中心</b><small>灵智云商业版</small></div>{adminNav.map(([key,label,Icon])=><button key={key} className={section===key?"active":""} onClick={()=>setSection(key as AdminSection)}><Icon size={17}/>{label}</button>)}</aside>
+   <section className="admin-main">
+    <header><div><h2>{adminNav.find(x=>x[0]===section)?.[1]}</h2><p>管理平台运营数据与业务配置</p></div><div><label><Search size={15}/><input value={keyword} onChange={e=>setKeyword(e.target.value)} placeholder="搜索数据"/></label><button onClick={()=>notify("数据已刷新")}>刷新数据</button><span>超级管理员</span></div></header>
+    {section==="overview"&&<AdminOverview/>}
+    {section==="users"&&<AdminTable title="用户列表" action="新增用户" columns={["用户ID","用户/昵称","登录邮箱","套餐","余额","状态","最近活跃"]} rows={adminUsers.filter(r=>r.join("").includes(keyword))} onAction={()=>notify("已打开新增用户窗口")}/>}
+    {section==="tenants"&&<AdminTable title="租户与团队" action="创建租户" columns={["租户ID","团队名称","所有者","成员数","套餐","月度用量","状态"]} rows={[
+      ["T-001","灵智创意团队","陈先生","8 / 15","企业版","¥1,286.40","正常"],
+      ["T-002","星图设计工作室","设计工作室","5 / 8","团队版","¥689.20","正常"],
+      ["T-003","青云科技","林晓","3 / 5","专业版","¥228.60","正常"],
+    ]} onAction={()=>notify("已打开创建租户窗口")}/>}
+    {section==="models"&&<div className="admin-panel"><PanelHead title="模型与渠道" action="新增渠道" onAction={()=>notify("已打开新增渠道窗口")}/><div className="channel-grid">{Object.entries(enabled).map(([name,on],i)=><article key={name}><div><i className={["green","gold","blue","purple"][i]}>{name[0]}</i><span><b>{name}</b><small>{[18,12,9,6][i]} 个可用模型</small></span></div><em className={on?"ok":"off"}>{on?"运行正常":"已停用"}</em><div className="channel-meta"><span>请求成功率<b>{[99.98,99.92,99.89,99.95][i]}%</b></span><span>今日调用<b>{[12860,8960,6420,5080][i].toLocaleString()}</b></span></div><footer><button onClick={()=>setEnabled(v=>({...v,[name]:!on}))}>{on?"停用渠道":"启用渠道"}</button><button>配置</button></footer></article>)}</div></div>}
+    {section==="orders"&&<AdminTable title="套餐与订单" action="新建套餐" columns={["订单号","用户","商品","金额","支付方式","状态","创建时间"]} rows={adminOrders} onAction={()=>notify("已打开套餐配置窗口")}/>}
+    {section==="finance"&&<AdminTable title="资金流水" action="导出账单" columns={["流水号","用户","业务类型","收入","支出","余额","时间"]} rows={[
+      ["BL26092101","设计工作室","套餐支付","¥3,999.00","—","¥4,869.00","10:28"],
+      ["BL26092102","林晓","在线充值","¥200.00","—","¥256.20","09:16"],
+      ["BL26092103","陈先生","模型消费","—","¥0.18","¥128.60","09:02"],
+    ]} onAction={()=>notify("账单导出任务已创建")}/>}
+    {section==="tasks"&&<AdminTable title="生成任务监控" action="批量重试" columns={["任务ID","用户","类型","模型","耗时","费用","状态"]} rows={[
+      ["TASK-88201","陈先生","图像","FLUX 1.1","8.2s","¥0.12","成功"],
+      ["TASK-88200","林晓","视频","Veo 3","128s","¥1.80","生成中"],
+      ["TASK-88199","设计工作室","对话","GPT-5","2.1s","¥0.02","成功"],
+      ["TASK-88198","王先生","音频","Suno V4.5","—","¥0.30","失败"],
+    ]} onAction={()=>notify("失败任务已加入重试队列")}/>}
+    {section==="content"&&<AdminTable title="内容审核" action="审核规则" columns={["内容ID","用户","内容类型","风险标签","模型结果","人工状态","提交时间"]} rows={[
+      ["CT-20031","陈先生","图片","无","通过","无需审核","10:36"],
+      ["CT-20030","王先生","文本","敏感词","拦截","待复核","10:21"],
+      ["CT-20029","设计工作室","视频","无","通过","无需审核","09:48"],
+    ]} onAction={()=>notify("已打开审核规则配置")}/>}
+    {section==="tickets"&&<AdminTable title="工单与客服" action="新建工单" columns={["工单号","用户","分类","主题","优先级","状态","更新时间"]} rows={[
+      ["TK-1092","林晓","计费问题","视频任务重复扣费","高","处理中","10 分钟前"],
+      ["TK-1091","陈先生","模型问题","Claude 返回超时","中","待处理","32 分钟前"],
+      ["TK-1090","设计工作室","商务合作","企业套餐咨询","普通","已回复","2 小时前"],
+    ]} onAction={()=>notify("已打开工单编辑窗口")}/>}
+    {section==="roles"&&<AdminTable title="角色与权限" action="新增角色" columns={["角色","成员数","数据范围","模型权限","财务权限","配置权限","状态"]} rows={[
+      ["超级管理员","2","全部租户","全部","读写","读写","启用"],
+      ["运营管理员","5","全部租户","查看","只读","部分","启用"],
+      ["租户管理员","36","所属租户","套餐内","只读","无","启用"],
+      ["客服","8","工单关联","无","无","无","启用"],
+    ]} onAction={()=>notify("已打开角色创建窗口")}/>}
+    {section==="settings"&&<SettingsPanel onSave={()=>notify("系统配置已保存")}/>}
+   </section>
+   {toast&&<div className="admin-toast"><Check size={16}/>{toast}</div>}
+ </div>
+}
+
+function AdminOverview(){
+ return <div className="admin-overview"><div className="metric-grid">{[
+   ["今日收入","¥12,860.40","较昨日 +18.6%","money"],["活跃用户","2,486","较昨日 +12.3%","users"],
+   ["模型调用","48,692","成功率 99.93%","calls"],["毛利率","41.8%","本月累计","profit"],
+ ].map(x=><article key={x[0]}><span>{x[0]}</span><b>{x[1]}</b><small>{x[2]}</small><i className={x[3]}/></article>)}</div>
+ <div className="admin-chart-row"><article className="revenue-chart"><PanelHead title="收入与成本趋势"/><div className="chart-legend"><span><i/>收入</span><span><i/>成本</span></div><div className="bars">{[42,58,48,74,68,85,78,92,75,96,89,100].map((v,i)=><div key={i}><span style={{height:`${v}%`}}/><i style={{height:`${v*.48}%`}}/><small>{i+1}月</small></div>)}</div></article><article className="model-share"><PanelHead title="模型调用占比"/><div className="donut"><div><b>48.7K</b><span>总调用</span></div></div><ul><li><i className="a"/>GPT 系列 <b>38%</b></li><li><i className="b"/>Claude <b>24%</b></li><li><i className="c"/>Gemini <b>19%</b></li><li><i className="d"/>其他模型 <b>19%</b></li></ul></article></div>
+ <div className="admin-bottom"><article><PanelHead title="实时业务动态"/>{["企业版套餐支付成功 · ¥3,999.00","用户林晓完成余额充值 · ¥200.00","Veo 3 视频生成任务完成","新租户「青云科技」创建成功"].map((x,i)=><div className="feed" key={x}><i className={`f${i}`}/><span><b>{x}</b><small>{[2,8,15,24][i]} 分钟前</small></span></div>)}</article><article><PanelHead title="待办事项"/>{[["内容待审核","12"],["失败任务待处理","4"],["客服工单待回复","8"],["异常渠道告警","1"]].map(x=><button className="todo" key={x[0]}><span>{x[0]}</span><b>{x[1]}</b><ArrowUp size={14}/></button>)}</article></div></div>
+}
+
+function PanelHead({title,action,onAction}:{title:string;action?:string;onAction?:()=>void}){return <div className="panel-head"><h3>{title}</h3>{action&&<button onClick={onAction}><Plus size={15}/>{action}</button>}</div>}
+function AdminTable({title,action,columns,rows,onAction}:{title:string;action:string;columns:string[];rows:string[][];onAction:()=>void}){return <div className="admin-panel"><PanelHead title={title} action={action} onAction={onAction}/><div className="table-tools"><button className="active">全部</button><button>正常</button><button>异常</button><span>共 {rows.length} 条记录</span><button>筛选 <ChevronDown size={13}/></button></div><div className="admin-table"><table><thead><tr>{columns.map(c=><th key={c}>{c}</th>)}<th>操作</th></tr></thead><tbody>{rows.map((r,i)=><tr key={i}>{r.map((c,j)=><td key={j}><span className={j===r.length-2?"state":""}>{c}</span></td>)}<td><button>查看</button><button>编辑</button></td></tr>)}</tbody></table></div><div className="pagination"><button>上一页</button><b>1</b><button>下一页</button></div></div>}
+function SettingsPanel({onSave}:{onSave:()=>void}){const [flags,setFlags]=useState({register:true,invite:true,audit:true,maintenance:false});return <div className="admin-panel settings-panel"><PanelHead title="系统配置"/><section><h3>基础信息</h3><div className="setting-grid"><label><span>平台名称</span><input defaultValue="灵智云 AI"/></label><label><span>客服邮箱</span><input defaultValue="support@example.com"/></label><label><span>默认用户分组</span><select defaultValue="free"><option value="free">免费用户</option><option>专业用户</option></select></label><label><span>默认货币</span><select defaultValue="CNY"><option>CNY</option><option>USD</option></select></label></div></section><section><h3>业务开关</h3>{Object.entries(flags).map(([k,v])=><label className="switch-row" key={k}><span><b>{{register:"开放用户注册",invite:"启用邀请奖励",audit:"启用内容安全审核",maintenance:"平台维护模式"}[k as keyof typeof flags]}</b><small>修改后将立即影响用户端业务</small></span><button className={v?"on":""} onClick={()=>setFlags(f=>({...f,[k]:!v}))}><i/></button></label>)}</section><section><h3>计费策略</h3><div className="setting-grid"><label><span>最低充值金额</span><input defaultValue="10"/></label><label><span>余额预警阈值</span><input defaultValue="5"/></label><label><span>新用户赠送额度</span><input defaultValue="1"/></label><label><span>失败任务自动退款</span><select><option>开启</option><option>关闭</option></select></label></div></section><button className="save-settings" onClick={onSave}>保存全部配置</button></div>}
 
 function ChatPanel({model,prompt,setPrompt,history,send}:{model:Model;prompt:string;setPrompt:(s:string)=>void;history:{role:"user"|"ai";text:string}[];send:()=>void}){
  return <aside className="chat-panel"><header><div><i className={model.tone}>{model.mark}</i><span><b>{model.name}</b><small>{model.vendor} · {model.type}</small></span></div><button><MoreHorizontal size={18}/></button></header><div className="chat-tools"><button className="active"><WandSparkles size={15}/>综合最优</button><button><Bot size={15}/>长期记忆</button><button><Settings2 size={15}/>高级设置</button></div><div className="conversation">{history.length===0?<div className="chat-empty"><i><MessageSquareText size={30}/></i><h3>与 {model.name} 开始对话</h3><p>输入你的想法，或选择一个常用任务</p>{["撰写营销方案","分析一份文档","帮我优化提示词"].map(x=><button onClick={()=>setPrompt(x)} key={x}>{x}<ArrowUp size={13}/></button>)}</div>:history.map((m,i)=><div className={`bubble ${m.role}`} key={i}><i>{m.role==="ai"?model.mark:"陈"}</i><p>{m.text}</p></div>)}</div><div className="inputbox"><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}} placeholder={model.type==="聊天"?"输入消息，Enter 发送...":`描述你想生成的${model.type}...`}/><footer><div><button title="上传文件"><Paperclip size={18}/></button><button title="从资产库选择"><Upload size={18}/></button><span>支持文件与素材库</span></div><div><small>预计 {model.price}</small><button className="send" onClick={send}>{model.type==="聊天"?<Send size={17}/>:<Sparkles size={17}/>}</button></div></footer></div><div className="chat-foot">内容由 AI 生成，请注意甄别信息准确性</div></aside>
