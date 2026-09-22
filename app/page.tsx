@@ -2,14 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Aperture, ArrowUp, Bell, Bot, Boxes, Check, ChevronDown, CircleDollarSign,
+  Aperture, ArrowUp, Bell, Bot, Boxes, Check, ChevronDown,
   Code2, Compass, Copy, FileText, Headphones, Image as ImageIcon, KeyRound,
   LayoutGrid, Menu, MessageCircle, MessageSquareText, MoreHorizontal, Paperclip,
   Pin, PinOff, Plus, Search, Send, Settings2, Sparkles, SquarePen, Upload,
   UserRound, UsersRound, Video, WalletCards, WandSparkles, X, Zap, BarChart3,
-  ShieldCheck, Package, ShoppingCart, Database, Megaphone, TicketCheck,
+  ShieldCheck, ShoppingCart, Database, TicketCheck,
   Palette, Eye, MonitorSmartphone, ReceiptText, History,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 type MainView = "models" | "agents" | "inspiration" | "api" | "mine" | "history" | "billing" | "team" | "admin";
 type ModelType = "全部" | "聊天" | "图片" | "视频" | "音频" | "我的";
@@ -78,8 +79,11 @@ export default function Home(){
   const [modal,setModal]=useState<Modal>(null);
   const [mobile,setMobile]=useState(false);
   const [amount,setAmount]=useState(100);
-  const [theme,setTheme]=useState<UiTheme>("reference");
-  useEffect(()=>{const saved=localStorage.getItem("lingzhi-ui-theme") as UiTheme|null;if(saved&&uiThemes.some(t=>t.id===saved))setTheme(saved)},[]);
+  const [theme,setTheme]=useState<UiTheme>(()=>{
+    if(typeof window==="undefined")return "reference";
+    const saved=localStorage.getItem("lingzhi-ui-theme") as UiTheme|null;
+    return saved&&uiThemes.some(t=>t.id===saved)?saved:"reference";
+  });
   useEffect(()=>{document.documentElement.dataset.uiTheme=theme;localStorage.setItem("lingzhi-ui-theme",theme)},[theme]);
   const filtered=useMemo(()=>models.filter(m=>(type==="全部"||type==="我的"&&pinned.includes(m.id)||m.type===type)&&(vendor==="全部厂商"||m.vendor===vendor)&&(m.name+m.vendor+m.desc).toLowerCase().includes(query.toLowerCase())).sort((a,b)=>Number(pinned.includes(b.id))-Number(pinned.includes(a.id))),[type,vendor,query,pinned]);
   function send(){const text=prompt.trim();if(!text)return;setHistory(v=>[...v,{role:"user",text},{role:"ai",text:`已通过 ${selected.name} 接收你的任务。当前为演示模式，配置 New API 后会返回真实生成结果。`}]);setPrompt("")}
@@ -362,13 +366,21 @@ function FeatureModal({kind,close,open,navigate}:{kind:Exclude<Modal,null|"notic
  const meta={advanced:[Settings2,"高级设置","统一控制对话工具、AI 生成能力与消耗上限"],memory:[Bot,"长期记忆","管理 AI 在后续对话中主动调用的信息"],skills:[Zap,"技能广场","选择专业技能，支持设为常驻技能"],account:[UserRound,"个人中心","账户、算力、团队与服务管理"],assets:[Database,"全局资产库","集中管理图片、视频、音频和文档素材"],apikeys:[KeyRound,"API 密钥","创建并管理 OpenAI 兼容接口密钥"]} as const;
  const [Icon,title,desc]=meta[kind];
  const toggle=(name:string)=>setFlags(v=>({...v,[name]:!v[name]}));
+ const accountActions:{name:string;description:string;icon:LucideIcon;action:()=>void}[]=[
+  {name:"API 密钥",description:"接口密钥与路由策略",icon:KeyRound,action:()=>open("apikeys")},
+  {name:"在线充值",description:"微信、支付宝与卡密",icon:WalletCards,action:()=>open("recharge")},
+  {name:"团队账号",description:"成员、角色与额度",icon:UsersRound,action:()=>navigate("team")},
+  {name:"消费记录",description:"调用、充值与套餐流水",icon:ReceiptText,action:()=>navigate("billing")},
+  {name:"全局资产库",description:"图片、视频、音频、文档",icon:Database,action:()=>open("assets")},
+  {name:"生成记录",description:"任务状态与失败重试",icon:History,action:()=>navigate("history")},
+  {name:"登录设备",description:"查看并下线可疑设备",icon:ShieldCheck,action:()=>{}},
+  {name:"站内消息",description:"通知、公告与服务提醒",icon:Bell,action:()=>open("notice")},
+ ];
  return <div className={`feature-modal feature-${kind}`} onMouseDown={e=>e.stopPropagation()}><header><div><i><Icon size={20}/></i><span><b>{title}</b><small>{desc}</small></span></div><button onClick={close}><X size={19}/></button></header>
   {kind==="advanced"&&<div className="advanced-body"><div className="setting-columns"><SettingGroup title="智能工具" items={toolSettings} flags={flags} toggle={toggle}/><SettingGroup title="AI 生成" items={generationSettings} flags={flags} toggle={toggle}/></div><section className="limit-box"><h3>消耗控制</h3><label><span>单条消息最大提交长度</span><b>100,000 tokens</b></label><label><span>单次任务总消耗上限</span><b>¥ 20.00</b></label></section><button className="feature-primary">保存高级设置</button></div>}
   {kind==="memory"&&<div className="memory-body"><div className="memory-add"><input value={memory} onChange={e=>setMemory(e.target.value)} placeholder="例如：我偏好简洁的中文回答"/><button onClick={()=>{if(memory.trim()){setMemories(v=>[memory.trim(),...v]);setMemory("")}}}><Plus size={15}/>新增</button></div><button className="organize"><History size={16}/><span><b>整理记录</b><small>查看自动整理内容并支持恢复</small></span><ArrowUp size={14}/></button>{memories.length?<div className="memory-list">{memories.map((m,i)=><article key={i}><Bot size={16}/><span>{m}</span><button onClick={()=>setMemories(v=>v.filter((_,j)=>j!==i))}><X size={14}/></button></article>)}</div>:<div className="feature-empty"><Bot size={34}/><h3>让 AI 更懂你</h3><p>添加偏好、身份和长期目标，后续对话可自动调用。</p></div>}</div>}
   {kind==="skills"&&<div className="skills-body"><div className="skills-filter"><label><Search size={15}/><input value={skillQuery} onChange={e=>setSkillQuery(e.target.value)} placeholder="搜索技能名称或描述"/></label><button><Plus size={15}/>创建技能</button></div><div className="skill-tabs">{["全部","官方","我的","社区","写作创作","营销电商","数据分析","编程开发"].map((x,i)=><button className={i===0?"active":""} key={x}>{x}</button>)}</div><div className="skill-grid">{skillItems.filter(x=>x.join("").includes(skillQuery)).map(x=><article key={x[0]}><i><Zap size={18}/></i><span>{x[1]}</span><h3>{x[0]}</h3><p>{x[2]}</p><button className={resident===x[0]?"resident":""} onClick={()=>setResident(x[0])}>{resident===x[0]?<><Check size={13}/>已常驻</>:"设为常驻"}</button></article>)}</div></div>}
-  {kind==="account"&&<div className="account-body"><section className="account-profile"><i>陈</i><div><h3>陈先生 <em>团队管理员</em></h3><p>ID: 100086 · chen@example.com</p></div><strong>¥128.60<small>可用余额</small></strong></section><section className="cloud-plan"><div><span>资源存储云空间</span><b>专业版 · 30GB</b><small>用于保存对话、作品和团队资产</small></div><button>管理套餐</button></section><div className="account-actions">{[
-    ["API 密钥","接口密钥与路由策略",KeyRound,()=>open("apikeys")],["在线充值","微信、支付宝与卡密",WalletCards,()=>open("recharge")],["团队账号","成员、角色与额度",UsersRound,()=>navigate("team")],["消费记录","调用、充值与套餐流水",ReceiptText,()=>navigate("billing")],["全局资产库","图片、视频、音频、文档",Database,()=>open("assets")],["生成记录","任务状态与失败重试",History,()=>navigate("history")],["登录设备","查看并下线可疑设备",ShieldCheck,()=>{}],["站内消息","通知、公告与服务提醒",Bell,()=>open("notice")],
-   ].map(([name,d,ActionIcon,action])=><button key={name as string} onClick={action as ()=>void}><i><ActionIcon size={17}/></i><span><b>{name as string}</b><small>{d as string}</small></span><ArrowUp size={14}/></button>)}</div><div className="account-foot-actions"><button>每日签到</button><button>隐私模式</button><button>语言：中文</button><button>意见反馈</button></div></div>}
+  {kind==="account"&&<div className="account-body"><section className="account-profile"><i>陈</i><div><h3>陈先生 <em>团队管理员</em></h3><p>ID: 100086 · chen@example.com</p></div><strong>¥128.60<small>可用余额</small></strong></section><section className="cloud-plan"><div><span>资源存储云空间</span><b>专业版 · 30GB</b><small>用于保存对话、作品和团队资产</small></div><button>管理套餐</button></section><div className="account-actions">{accountActions.map(({name,description,icon:ActionIcon,action})=><button key={name} onClick={action}><i><ActionIcon size={17}/></i><span><b>{name}</b><small>{description}</small></span><ArrowUp size={14}/></button>)}</div><div className="account-foot-actions"><button>每日签到</button><button>隐私模式</button><button>语言：中文</button><button>意见反馈</button></div></div>}
   {kind==="assets"&&<div className="assets-body"><div className="assets-toolbar"><div>{["全部","图片","视频","音频","文档"].map((x,i)=><button className={i===0?"active":""} key={x}>{x}</button>)}</div><label><Search size={15}/><input placeholder="搜索资产名称或标签"/></label><button><Upload size={15}/>上传素材</button></div><div className="asset-grid">{["品牌 Logo","产品主图","人物参考图","宣传短片","背景音乐","品牌手册"].map((x,i)=><article key={x}><div className={`asset-thumb a${i}`}>{i<3?<ImageIcon size={26}/>:i===3?<Video size={26}/>:i===4?<Headphones size={26}/>:<FileText size={26}/>}</div><span><b>{x}</b><small>{["PNG · 2.4MB","JPG · 1.8MB","JPG · 3.1MB","MP4 · 28MB","MP3 · 6.2MB","PDF · 4.5MB"][i]}</small></span><button><MoreHorizontal size={15}/></button></article>)}</div></div>}
   {kind==="apikeys"&&<div className="apikey-body"><div className="api-address"><span><Code2 size={16}/>API 地址</span><code>https://api.example.com/v1</code><button><Copy size={14}/>复制</button><button>API 文档</button></div><div className="api-key-tools"><label><Search size={15}/><input placeholder="按名称筛选密钥"/></label><div><button className="active">全部 2</button><button>已启用 2</button><button>已停用 0</button></div><button className="feature-primary"><Plus size={14}/>创建 API 密钥</button></div><div className="api-key-table"><div className="head"><span>名称</span><span>密钥</span><span>路由策略</span><span>已使用</span><span>状态</span><span>操作</span></div>{[["生产环境","sk-live-****-28f9","综合最优","¥128.60"],["测试环境","sk-test-****-7ac2","价格优先","¥8.20"]].map(x=><div key={x[0]}><span>{x[0]}</span><code>{x[1]}</code><span>{x[2]}</span><span>{x[3]}</span><em>已启用</em><button>编辑</button></div>)}</div></div>}
  </div>
