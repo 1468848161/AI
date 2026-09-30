@@ -1,120 +1,154 @@
-# 灵智云 AI SaaS
+# 灵智云 AI SaaS 一体化版
 
-一套可二次开发的 AI 聚合平台前端与服务端代理项目。项目使用 Next.js 16、React 19 和 TypeScript 开发，通过 OpenAI 兼容接口连接 [New API](https://github.com/QuantumNous/new-api)，不包含 SourceGuardian 或其他加密 PHP 文件。
+可二次开发的 AI 聚合 SaaS。仓库已经把用户前端、运营后台、[New API](https://github.com/QuantumNous/new-api)、PostgreSQL 和 Redis 组合成一套 Docker Compose 服务，无需再单独安装数据库或网关。
 
-## 当前包含
+## 一条命令部署
 
-- 深色星环风格首页和完整移动端适配
-- 大模型、智能体、灵感广场、作品与生成记录
-- 对话、图片、视频、音频工作台界面
-- 高级参数、长期记忆、技能广场和资产库界面
-- 账户、充值、账单、团队账号和 API 密钥界面
-- SaaS 运营后台：用户、租户、模型、订单、财务、任务、内容、工单、角色和系统配置
-- 四套 UI 主题：星环深海、极光幻境、云端简白、曜石金
-- `/api/models` 与 `/api/chat` 服务端代理，可对接 New API
-- Docker、Linux、Windows 和 Cloudflare/Sites 部署基础
-
-> 当前仓库是可运行、可二开的商业化界面与 New API 接入骨架。未配置 New API 时自动返回演示数据。真实登录注册、支付回调、余额扣费、租户隔离、记忆持久化和图片/视频任务回调，需要继续接入相应后端服务，不能仅靠前端页面实现。
-
-## 技术栈
-
-- Next.js 16 / React 19 / TypeScript
-- Tailwind CSS 4 / Lucide Icons
-- Vinext / Vite（Cloudflare Worker 构建）
-- Drizzle ORM（预留 D1 数据库能力）
-- New API（OpenAI 兼容模型网关）
-
-## 快速启动
-
-环境要求：Node.js 22.13 及以上、pnpm 11。
+Linux：
 
 ```bash
 git clone https://github.com/1468848161/AI.git
 cd AI
-cp .env.example .env.local
-pnpm install --frozen-lockfile
-pnpm dev
+bash scripts/deploy.sh
 ```
 
-Windows PowerShell：
+Windows（已安装 Docker Desktop）：
 
 ```powershell
 git clone https://github.com/1468848161/AI.git
 cd AI
-Copy-Item .env.example .env.local
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy.ps1
+```
+
+部署脚本会：
+
+1. 从 `.env.example` 创建不提交到 Git 的 `.env`；
+2. 随机生成 PostgreSQL、Redis、会话和缓存签名密钥；
+3. 启动 PostgreSQL、Redis、New API 和 AI SaaS 前端；
+4. 等待依赖健康后再启动上层服务；
+5. 将前端和 New API 分别绑定到本机 3000、3001 端口。
+
+## 服务组成
+
+| 服务 | 容器内职责 | 默认宿主机地址 |
+|---|---|---|
+| `ai-saas` | 用户端、运营后台、New API 服务端代理 | `127.0.0.1:3000` |
+| `new-api` | 模型渠道、令牌、额度、计费和调用日志 | `127.0.0.1:3001` |
+| `postgres` | New API 主数据库 | 不暴露 |
+| `redis` | 会话、缓存和限流 | 不暴露 |
+
+前端通过 Docker 内网地址 `http://new-api:3000` 调用 New API，管理 Token 只存在于服务端环境变量，不会发送到浏览器。
+
+## 首次初始化
+
+启动后访问 New API 管理端，完成首次管理员初始化、添加模型渠道并创建一个前端专用令牌。
+
+编辑自动生成的 `.env`：
+
+```env
+NEW_API_ADMIN_TOKEN=sk-你的前端专用令牌
+```
+
+然后只重启前端：
+
+```bash
+docker compose --env-file .env up -d --force-recreate ai-saas
+```
+
+远程服务器默认不公开 3000/3001 端口，可使用 SSH 隧道初始化：
+
+```bash
+ssh -L 3000:127.0.0.1:3000 -L 3001:127.0.0.1:3001 user@server-ip
+```
+
+浏览器访问 `http://127.0.0.1:3001`。正式上线请为前端和 New API 分别配置 HTTPS 域名，详见 [完整部署手册](docs/DEPLOYMENT.md)。
+
+## 当前功能
+
+- 深色星环首页和移动端适配
+- 大模型、智能体、灵感广场、作品和生成记录
+- 对话、图片、视频、音频工作台界面
+- 对话工作台真实调用内置 New API 的 `/v1/chat/completions`
+- 高级设置、长期记忆、技能广场和资产库
+- 账户、充值、账单、团队账号和 API 密钥界面
+- SaaS 运营后台：租户、用户、模型、订单、财务、任务、内容、工单、角色和系统配置
+- 星环深海、极光幻境、云端简白、曜石金四套 UI
+- New API 模型网关、渠道、令牌、额度与日志管理
+- PostgreSQL 持久化、Redis 缓存、健康检查、备份和升级脚本
+
+> 图片、视频、音频的界面与参数已经提供；真实生成需先在 New API 配置相应渠道或任务插件，再接入对应媒体端点。平台账户、支付回调和租户账务仍需根据实际支付商户及业务规则继续开发，不能仅靠 New API 自动完成。
+
+## 常用运维命令
+
+```bash
+# 状态
+docker compose --env-file .env ps
+
+# 日志
+docker compose --env-file .env logs -f --tail=200
+
+# 备份 New API 数据库
+bash scripts/backup-stack.sh
+
+# 更新前端与基础服务镜像
+bash scripts/update-stack.sh
+
+# 停止但保留数据
+docker compose --env-file .env down
+```
+
+不要执行 `docker compose down -v`，该命令会删除数据库和缓存卷。
+
+## 本地二次开发
+
+要求 Node.js 22.13+、pnpm 11：
+
+```bash
 corepack enable
 corepack prepare pnpm@11.25.0 --activate
 pnpm install --frozen-lockfile
+cp .env.example .env.local
 pnpm dev
 ```
 
-打开 `http://localhost:3000`。
-
-## 接入 New API
-
-编辑 `.env.local` 或生产环境的 `.env.production`：
+只开发前端时，将 `.env.local` 中配置为可访问的 New API：
 
 ```env
-NEW_API_BASE_URL=https://api.example.com
-NEW_API_ADMIN_TOKEN=sk-your-server-token
+NEW_API_BASE_URL=http://127.0.0.1:3001
+NEW_API_ADMIN_TOKEN=sk-your-token
 ```
 
-- `NEW_API_BASE_URL` 不要以 `/` 结尾。
-- `NEW_API_ADMIN_TOKEN` 只允许保存在服务端环境变量中，不能增加 `NEXT_PUBLIC_` 前缀。
-- 如果客户端请求携带 Bearer Token，代理会优先使用客户端 Token；否则使用服务端管理 Token。
-- 未配置 `NEW_API_BASE_URL` 时，接口会进入演示模式，便于先预览 UI。
-
-## 构建与运行
-
-标准 Node.js 部署：
-
-```bash
-pnpm build
-pnpm start
-```
-
-Docker 部署：
-
-```bash
-cp .env.example .env.production
-docker compose up -d --build
-```
-
-完整的服务器、Nginx、HTTPS、升级和回滚步骤见 [部署手册](docs/DEPLOYMENT.md)。
-
-## 常用命令
+## 构建命令
 
 | 命令 | 用途 |
 |---|---|
-| `pnpm dev` | 启动标准 Next.js 开发环境 |
-| `pnpm build` | 生成标准 Node.js 独立部署包 |
-| `pnpm start` | 启动已构建的独立服务 |
-| `pnpm lint` | 执行代码规范检查 |
-| `pnpm dev:sites` | 启动 Vinext/Sites 开发环境 |
-| `pnpm build:sites` | 生成 Cloudflare Worker 构建 |
-| `pnpm db:generate` | 根据 Drizzle Schema 生成迁移 |
+| `pnpm dev` | Next.js 开发环境 |
+| `pnpm build` | Node.js standalone 生产构建 |
+| `pnpm start` | 启动 standalone 构建 |
+| `pnpm lint` | 代码规范检查 |
+| `pnpm build:sites` | Cloudflare/Sites 构建 |
 
-## 目录说明
+## 目录
 
 ```text
-app/                  页面、样式和 API 路由
-components/ui/        通用 UI 组件
-lib/new-api.ts        New API 服务端请求封装
-db/                   Drizzle 数据库接入骨架
-docs/DEPLOYMENT.md    完整部署手册
-public/               静态资源
-Dockerfile            生产镜像构建
-docker-compose.yml    单机部署编排
+app/                       页面、后台和 API 路由
+components/ui/             通用 UI 组件
+lib/new-api.ts             New API 服务端请求封装
+deploy/                    Nginx 配置模板
+docs/DEPLOYMENT.md         一体化部署与运维手册
+scripts/deploy.sh          Linux 一键部署
+scripts/deploy.ps1         Windows 一键部署
+scripts/backup-stack.sh    PostgreSQL 备份
+scripts/update-stack.sh    整体升级
+docker-compose.yml         四服务一体化编排
 ```
 
-## 安全约定
+## 安全说明
 
-- 仓库只提交 `.env.example`，真实 `.env` 文件已被 Git 忽略。
-- 不要把数据库密码、支付密钥、New API Token 或第三方密钥写入代码。
-- 生产环境应通过防火墙只开放 80/443，应用端口仅监听 `127.0.0.1`。
-- 支付回调必须在服务端验签，并使用数据库唯一约束保证幂等。
-- 正式商用前应补充鉴权、权限校验、限流、日志脱敏、备份和安全审计。
-
-## 主题切换
-
-进入运营后台的“界面装修”，可切换四套主题。当前选择保存在浏览器本地存储；如需对所有租户统一生效，可把主题设置保存到租户配置表并由服务端下发。
+- 真实 `.env`、备份和运行数据均被 Git 忽略。
+- 数据库与 Redis 不映射到宿主机公网端口。
+- 前端和 New API 默认仅监听 `127.0.0.1`。
+- 正式环境必须启用 HTTPS，并为 New API 配置 Secure Cookie 和可信 Origin。
+- 不要把数据库密码、New API Token、支付密钥或模型渠道密钥提交到仓库。
+- New API 默认使用官方 `latest` 镜像；商业生产建议先测试，然后在 `.env` 固定经过验证的版本标签。
+- New API 使用 AGPL-3.0，商业部署前请阅读 [第三方组件声明](THIRD_PARTY_NOTICES.md) 并确认合规方案。

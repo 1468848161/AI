@@ -1,15 +1,23 @@
-# 灵智云 AI SaaS 部署手册
+# 灵智云 AI SaaS + New API 一体化部署手册
 
-本文提供推荐的 Docker 部署方式，以及 Node.js、Windows 和 Cloudflare Worker 部署方法。生产环境建议使用独立域名，并让 Nginx 负责 HTTPS。
+本部署栈同时启动：
 
-## 1. 部署前准备
+- 灵智云 AI SaaS 前端与运营后台
+- New API 模型网关
+- PostgreSQL 15
+- Redis 7.4
+
+New API 官方文档推荐生产环境使用 PostgreSQL；Redis 用于会话、缓存和限流。数据库和 Redis 仅在 Docker 内网通信。
+
+## 1. 服务器准备
 
 推荐配置：
 
-- Ubuntu 22.04/24.04，2 核 CPU、4 GB 内存及以上
-- Docker Engine 24+ 和 Docker Compose v2
-- 已解析到服务器的域名
-- 可访问的 New API 地址及服务端 Token
+- Ubuntu 22.04/24.04
+- 2 核 CPU、4 GB 内存及以上
+- 30 GB 以上可用磁盘
+- Docker Engine 24+、Docker Compose v2
+- 两个已解析到服务器的域名，例如 `ai.example.com`、`api.example.com`
 
 安全组只开放：
 
@@ -17,13 +25,9 @@
 - `80/tcp`：HTTP
 - `443/tcp`：HTTPS
 
-不要把应用端口 3000、数据库端口或 New API 管理端口直接暴露到公网。
+3000、3001、5432、6379 均不需要开放公网。
 
-## 2. Docker 部署（推荐）
-
-### 2.1 安装 Docker
-
-Ubuntu：
+## 2. 安装 Docker
 
 ```bash
 curl -fsSL https://get.docker.com | sh
@@ -38,79 +42,103 @@ docker version
 docker compose version
 ```
 
-### 2.2 获取源码
+## 3. Linux 一键部署
 
 ```bash
 git clone https://github.com/1468848161/AI.git
 cd AI
+bash scripts/deploy.sh
 ```
 
-### 2.3 配置环境变量
+首次运行会自动创建权限为 `600` 的 `.env`，并随机生成：
+
+- PostgreSQL 密码
+- Redis 密码
+- New API `SESSION_SECRET`
+- New API `CRYPTO_SECRET`
+
+再次运行脚本不会覆盖已有密钥。
+
+查看状态：
 
 ```bash
-cp .env.example .env.production
-nano .env.production
+docker compose --env-file .env ps
+docker compose --env-file .env logs --tail=100
 ```
 
-至少填写：
+所有服务应最终变为 `healthy`。
+
+## 4. Windows 一键部署
+
+先安装 Docker Desktop、Git，然后在 PowerShell 中执行：
+
+```powershell
+git clone https://github.com/1468848161/AI.git
+cd AI
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy.ps1
+```
+
+Windows 本机可直接访问：
+
+- AI SaaS：`http://127.0.0.1:3000`
+- New API：`http://127.0.0.1:3001`
+
+## 5. 初始化 New API
+
+服务器上的端口仅监听 `127.0.0.1`。配置域名前，可以从自己的电脑建立 SSH 隧道：
+
+```bash
+ssh -L 3000:127.0.0.1:3000 -L 3001:127.0.0.1:3001 user@server-ip
+```
+
+打开 `http://127.0.0.1:3001`：
+
+1. 完成 New API 首次管理员初始化；
+2. 在“渠道”中添加 OpenAI、Anthropic、Gemini、DeepSeek 等上游；
+3. 在“模型”或渠道映射中确认前端使用的模型名称；
+4. 创建一个只供 AI SaaS 服务端使用的专用令牌；
+5. 为该令牌设置合理的模型范围、额度和过期时间。
+
+编辑 `.env`：
 
 ```env
-NEW_API_BASE_URL=https://你的-new-api-域名
-NEW_API_ADMIN_TOKEN=你的服务端Token
+NEW_API_ADMIN_TOKEN=sk-你的前端专用令牌
 ```
 
-保存后限制读取权限：
+重建前端容器，让服务端读取令牌：
 
 ```bash
-chmod 600 .env.production
+docker compose --env-file .env up -d --force-recreate ai-saas
 ```
 
-### 2.4 构建并启动
+检查代理接口：
 
 ```bash
-docker compose up -d --build
-docker compose ps
-docker compose logs --tail=100 ai-saas
+curl http://127.0.0.1:3000/api/models
 ```
 
-本机检查：
+## 6. 配置 Nginx
 
-```bash
-curl -I http://127.0.0.1:3000
-```
-
-## 3. 配置 Nginx 与 HTTPS
-
-安装 Nginx：
+安装：
 
 ```bash
 sudo apt update
 sudo apt install -y nginx
 ```
 
-创建 `/etc/nginx/sites-available/ai-saas`：
+复制仓库内模板：
 
-```nginx
-server {
-    listen 80;
-    server_name ai.example.com;
-
-    client_max_body_size 100m;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-    }
-}
+```bash
+sudo cp deploy/nginx-ai-saas.conf.example /etc/nginx/sites-available/ai-saas
+sudo nano /etc/nginx/sites-available/ai-saas
 ```
 
-将 `ai.example.com` 替换成真实域名，然后执行：
+分别替换：
+
+- `ai.example.com`：用户前端域名
+- `api.example.com`：New API 管理和开放接口域名
+
+启用配置：
 
 ```bash
 sudo ln -s /etc/nginx/sites-available/ai-saas /etc/nginx/sites-enabled/ai-saas
@@ -118,152 +146,179 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-申请 HTTPS 证书：
+## 7. 配置 HTTPS
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d ai.example.com
+sudo certbot --nginx -d ai.example.com -d api.example.com
 sudo certbot renew --dry-run
 ```
 
-## 4. 更新版本
+HTTPS 生效后，编辑 `.env`：
+
+```env
+NEW_API_SESSION_COOKIE_SECURE=true
+NEW_API_SESSION_COOKIE_TRUSTED_URL=https://api.example.com
+```
+
+`NEW_API_SESSION_COOKIE_TRUSTED_URL` 必须是精确 HTTPS Origin，不要填写路径或通配符。
+
+重建 New API：
 
 ```bash
-cd AI
+docker compose --env-file .env up -d --force-recreate new-api
+docker compose --env-file .env up -d --force-recreate ai-saas
+```
+
+## 8. 网络与数据结构
+
+```mermaid
+flowchart TD
+    Internet --> Nginx["Nginx :80 / :443"]
+    Nginx -->|ai.example.com| Frontend["AI SaaS · 127.0.0.1:3000"]
+    Nginx -->|api.example.com| Gateway["New API · 127.0.0.1:3001"]
+    Frontend -->|Docker 内网| Gateway
+    Gateway --> PostgreSQL
+    Gateway --> Redis
+```
+
+持久化卷：
+
+| 卷 | 内容 |
+|---|---|
+| `postgres_data` | 用户、渠道、令牌、额度、订单和调用记录 |
+| `redis_data` | Redis AOF、缓存与会话数据 |
+| `new_api_data` | New API 本地运行数据 |
+| `new_api_logs` | New API 文件日志 |
+
+停止服务但保留数据：
+
+```bash
+docker compose --env-file .env down
+```
+
+不要执行 `docker compose down -v`，除非明确要永久删除所有数据。
+
+## 9. 数据备份
+
+执行：
+
+```bash
+bash scripts/backup-stack.sh
+```
+
+备份文件保存在 `backups/new-api-时间.sql.gz`，权限受当前用户和 `umask 077` 保护。建议每天执行并同步到另一台服务器或对象存储。
+
+恢复数据库会覆盖现有业务数据。维护窗口内执行：
+
+```bash
+docker compose --env-file .env stop ai-saas new-api
+gunzip -c backups/new-api-YYYYMMDDTHHMMSSZ.sql.gz \
+  | docker compose --env-file .env exec -T postgres \
+      sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
+docker compose --env-file .env start new-api ai-saas
+```
+
+恢复前应先对当前数据库再做一次备份。
+
+## 10. 整体升级
+
+先备份：
+
+```bash
+bash scripts/backup-stack.sh
+```
+
+再升级：
+
+```bash
 git pull --ff-only
-docker compose build --pull
-docker compose up -d
-docker image prune -f
+bash scripts/update-stack.sh
 ```
 
-查看运行状态：
+查看：
 
 ```bash
-docker compose ps
-docker compose logs -f --tail=200 ai-saas
+docker compose --env-file .env ps
+docker compose --env-file .env logs -f --tail=200
 ```
 
-## 5. 回滚
+默认 `NEW_API_IMAGE=calciumion/new-api:latest`。商业生产建议先在测试环境验证，然后把 `.env` 中的镜像改成经过验证的固定版本标签，再执行升级。
 
-先查看提交：
-
-```bash
-git log --oneline -10
-```
-
-选择需要恢复的版本并新建回滚分支，避免破坏历史：
-
-```bash
-git switch -c rollback-YYYYMMDD <commit_sha>
-docker compose up -d --build
-```
-
-确认无误后，再决定是否将回滚提交合并到主分支。
-
-## 6. 不使用 Docker 的 Node.js 部署
+## 11. 前端单独开发
 
 ```bash
 corepack enable
 corepack prepare pnpm@11.25.0 --activate
 pnpm install --frozen-lockfile
-cp .env.example .env.production
-pnpm build
-PORT=3000 HOSTNAME=127.0.0.1 pnpm start
+cp .env.example .env.local
 ```
 
-生产环境建议使用 systemd 或其他进程管理器守护服务，不要使用开发命令 `pnpm dev`。
+修改 `.env.local`：
 
-示例 `/etc/systemd/system/ai-saas.service`：
-
-```ini
-[Unit]
-Description=Lingzhi AI SaaS
-After=network.target
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/opt/AI
-EnvironmentFile=/opt/AI/.env.production
-Environment=PORT=3000
-Environment=HOSTNAME=127.0.0.1
-ExecStart=/usr/bin/node /opt/AI/.next/standalone/server.js
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
+```env
+NEW_API_BASE_URL=http://127.0.0.1:3001
+NEW_API_ADMIN_TOKEN=sk-your-token
 ```
 
-## 7. Windows 本地或内网部署
-
-安装 Node.js 22 LTS 和 Git，然后在 PowerShell 中执行：
-
-```powershell
-git clone https://github.com/1468848161/AI.git
-cd AI
-Copy-Item .env.example .env.production
-corepack enable
-corepack prepare pnpm@11.25.0 --activate
-pnpm install --frozen-lockfile
-pnpm build
-$env:PORT="3000"
-$env:HOSTNAME="0.0.0.0"
-pnpm start
-```
-
-同一局域网设备可通过 `http://服务器局域网IP:3000` 访问。公网部署仍建议使用 Linux、Nginx 和 HTTPS。
-
-## 8. Cloudflare Worker / Sites 构建
-
-项目保留了 Vinext 构建链：
+启动：
 
 ```bash
-pnpm build:sites
+pnpm dev
 ```
 
-构建结果位于 `dist/`。部署到 Cloudflare 时，需要在运行环境中配置 `NEW_API_BASE_URL` 和 `NEW_API_ADMIN_TOKEN`，不要把真实值写进仓库。
+## 12. Cloudflare/Sites 部署说明
 
-## 9. 上线检查清单
+`pnpm build:sites` 只构建 AI SaaS 前端，不能把 PostgreSQL、Redis 和 New API 一起部署到 Cloudflare Worker。云端前端必须把 `NEW_API_BASE_URL` 配置成公网 HTTPS New API 地址。
 
-- [ ] New API 地址使用 HTTPS
-- [ ] Token 仅存在于服务端环境变量
-- [ ] `.env.production` 未被 Git 跟踪
-- [ ] 服务器只开放 22/80/443
-- [ ] Nginx 与 HTTPS 配置有效
-- [ ] 真实登录、租户隔离和后台权限已启用
-- [ ] 支付回调完成签名校验和幂等处理
-- [ ] 数据库和上传文件有定时备份
-- [ ] 日志不记录 Token、密码和完整个人信息
-- [ ] 已设置监控、告警和资源限额
+完整的一体化部署请使用本仓库 Docker Compose。
 
-## 10. 常见问题
+## 13. 常见问题
 
-### 页面提示演示模式
-
-服务端没有读取到 `NEW_API_BASE_URL`。检查 `.env.production` 后重启容器：
+### New API 一直不健康
 
 ```bash
-docker compose up -d --force-recreate
+docker compose --env-file .env logs --tail=200 new-api postgres redis
 ```
-### New API 返回 401
 
-检查 `NEW_API_ADMIN_TOKEN` 是否有效，以及对应渠道、模型和额度是否可用。
+重点检查 `.env` 是否仍有 `CHANGE_ME_` 占位符，以及数据库、Redis 是否健康。
+
+### 前端返回 New API 401
+
+在 New API 中重新创建专用令牌，更新 `NEW_API_ADMIN_TOKEN`，然后重建 `ai-saas`。
+
+### 前端返回 502
+
+```bash
+docker compose --env-file .env exec ai-saas \
+  wget -q -O - http://new-api:3000/api/status
+```
+
+若容器内可以访问 New API，再检查渠道、模型名称和上游密钥。
 
 ### Nginx 返回 502
 
-先检查应用：
-
 ```bash
-docker compose ps
-docker compose logs --tail=200 ai-saas
 curl -I http://127.0.0.1:3000
+curl -I http://127.0.0.1:3001
+sudo nginx -t
 ```
 
-### 修改环境变量后没有生效
-
-重新创建容器：
+### 修改 `.env` 未生效
 
 ```bash
-docker compose up -d --force-recreate
+docker compose --env-file .env up -d --force-recreate
 ```
+
+## 14. 上线检查清单
+
+- [ ] `.env` 不在 Git 追踪列表中
+- [ ] 所有 `CHANGE_ME_` 占位符均已替换
+- [ ] PostgreSQL、Redis 未开放公网端口
+- [ ] 前端和 New API 只监听 `127.0.0.1`
+- [ ] 两个域名都已启用 HTTPS
+- [ ] New API 已启用 Secure Cookie 并配置可信 Origin
+- [ ] 前端使用独立、限额、可撤销的 New API Token
+- [ ] New API 渠道密钥只保存在服务端
+- [ ] 已验证数据库备份和恢复流程
+- [ ] 已设置监控、磁盘告警、日志轮转和异地备份

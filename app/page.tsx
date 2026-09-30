@@ -36,8 +36,8 @@ const uiThemes:{id:UiTheme;name:string;desc:string;colors:string[];badge:string}
 ];
 const models:Model[] = [
   {id:"gpt-5",name:"GPT-5",vendor:"OpenAI",type:"聊天",desc:"复杂推理、代码与专业内容创作",mark:"G",tone:"emerald",tags:["推理","联网"],price:"¥0.020/次",hot:true},
-  {id:"claude",name:"Claude Sonnet 4.5",vendor:"Anthropic",type:"聊天",desc:"长文理解、写作与文档分析",mark:"C",tone:"amber",tags:["长文本","写作"],price:"¥0.018/次"},
-  {id:"gemini",name:"Gemini 2.5 Pro",vendor:"Google",type:"聊天",desc:"原生多模态与超长上下文",mark:"◇",tone:"blue",tags:["多模态","视频"],price:"¥0.015/次"},
+  {id:"claude-sonnet-4-5",name:"Claude Sonnet 4.5",vendor:"Anthropic",type:"聊天",desc:"长文理解、写作与文档分析",mark:"C",tone:"amber",tags:["长文本","写作"],price:"¥0.018/次"},
+  {id:"gemini-2.5-pro",name:"Gemini 2.5 Pro",vendor:"Google",type:"聊天",desc:"原生多模态与超长上下文",mark:"◇",tone:"blue",tags:["多模态","视频"],price:"¥0.015/次"},
   {id:"deepseek",name:"DeepSeek V3",vendor:"DeepSeek",type:"聊天",desc:"中文理解与高性价比推理",mark:"D",tone:"indigo",tags:["中文","推理"],price:"¥0.004/次",hot:true},
   {id:"flux",name:"FLUX 1.1 Pro",vendor:"Black Forest",type:"图片",desc:"高质量写实图像与商业视觉",mark:"F",tone:"pink",tags:["文生图","写实"],price:"¥0.12/张"},
   {id:"midjourney",name:"Midjourney V7",vendor:"Midjourney",type:"图片",desc:"创意插画、海报与艺术设计",mark:"M",tone:"purple",tags:["艺术","海报"],price:"¥0.18/张"},
@@ -76,6 +76,7 @@ export default function Home(){
   const [pinned,setPinned]=useState<string[]>(["gpt-5"]);
   const [history,setHistory]=useState<{role:"user"|"ai";text:string}[]>([]);
   const [prompt,setPrompt]=useState("");
+  const [sending,setSending]=useState(false);
   const [modal,setModal]=useState<Modal>(null);
   const [mobile,setMobile]=useState(false);
   const [amount,setAmount]=useState(100);
@@ -86,7 +87,37 @@ export default function Home(){
   });
   useEffect(()=>{document.documentElement.dataset.uiTheme=theme;localStorage.setItem("lingzhi-ui-theme",theme)},[theme]);
   const filtered=useMemo(()=>models.filter(m=>(type==="全部"||type==="我的"&&pinned.includes(m.id)||m.type===type)&&(vendor==="全部厂商"||m.vendor===vendor)&&(m.name+m.vendor+m.desc).toLowerCase().includes(query.toLowerCase())).sort((a,b)=>Number(pinned.includes(b.id))-Number(pinned.includes(a.id))),[type,vendor,query,pinned]);
-  function send(){const text=prompt.trim();if(!text)return;setHistory(v=>[...v,{role:"user",text},{role:"ai",text:`已通过 ${selected.name} 接收你的任务。当前为演示模式，配置 New API 后会返回真实生成结果。`}]);setPrompt("")}
+  async function send(){
+    const text=prompt.trim();
+    if(!text||sending)return;
+    const requestHistory=[...history,{role:"user" as const,text}];
+    setHistory(requestHistory);
+    setPrompt("");
+    if(selected.type!=="聊天"){
+      setHistory(v=>[...v,{role:"ai",text:`已接收 ${selected.name} 的${selected.type}任务参数。请先在 New API 中配置对应模型或任务插件，再接入媒体生成端点。`}]);
+      return;
+    }
+    setSending(true);
+    try{
+      const response=await fetch("/api/chat",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          model:selected.id,
+          messages:requestHistory.map(message=>({role:message.role==="ai"?"assistant":"user",content:message.text})),
+          stream:false,
+        }),
+      });
+      const data=await response.json() as {choices?:{message?:{content?:string}}[];error?:string};
+      if(!response.ok)throw new Error(data.error||`请求失败（${response.status}）`);
+      const answer=data.choices?.[0]?.message?.content?.trim()||"模型没有返回文本内容。";
+      setHistory(v=>[...v,{role:"ai",text:answer}]);
+    }catch(error){
+      setHistory(v=>[...v,{role:"ai",text:`调用失败：${error instanceof Error?error.message:"未知错误"}`}]);
+    }finally{
+      setSending(false);
+    }
+  }
   if(!entered)return <Landing onStart={()=>setEntered(true)}/>;
   return <main className="app">
     <aside className={`rail ${mobile?"open":""}`}>
@@ -129,7 +160,7 @@ export default function Home(){
           </article>)}</div>
           {filtered.length===0&&<div className="no-result"><Search size={28}/><b>没有找到匹配的模型</b><span>试试调整分类、厂商或搜索关键词</span></div>}
         </section>
-        <ChatPanel model={selected} prompt={prompt} setPrompt={setPrompt} history={history} send={send} openModal={setModal}/>
+        <ChatPanel model={selected} prompt={prompt} setPrompt={setPrompt} history={history} sending={sending} send={send} openModal={setModal}/>
       </div>}
 
       {view==="agents"&&<ContentPage title="智能体广场" desc="按任务选择专业智能体，把复杂工作变成简单流程">
@@ -388,9 +419,9 @@ function FeatureModal({kind,close,open,navigate}:{kind:Exclude<Modal,null|"notic
 
 function SettingGroup({title,items,flags,toggle}:{title:string;items:string[];flags:Record<string,boolean>;toggle:(n:string)=>void}){return <section className="feature-setting-group"><h3>{title}</h3>{items.map(x=><label key={x}><span><b>{x}</b><small>{x.includes("生成")?"按模型与实际调用计费":"可在对话中自动调用"}</small></span><button className={flags[x]?"on":""} onClick={()=>toggle(x)}><i/></button></label>)}</section>}
 
-function ChatPanel({model,prompt,setPrompt,history,send,openModal}:{model:Model;prompt:string;setPrompt:(s:string)=>void;history:{role:"user"|"ai";text:string}[];send:()=>void;openModal:(m:Modal)=>void}){
+function ChatPanel({model,prompt,setPrompt,history,sending,send,openModal}:{model:Model;prompt:string;setPrompt:(s:string)=>void;history:{role:"user"|"ai";text:string}[];sending:boolean;send:()=>void|Promise<void>;openModal:(m:Modal)=>void}){
  const options=model.type==="图片"?["1 张","标准版","自适应比例","高清 2K","高质量","透明背景"]:model.type==="视频"?["1 条","横屏 16:9","高清 720P","6 秒","智能运镜"]:model.type==="音频"?["1 条","1.0x","标准音质","语言自动","情绪自然","极速 Turbo"]:[];
- return <aside className="chat-panel"><header><div><i className={model.tone}>{model.mark}</i><span><b>{model.name}</b><small>{model.vendor} · {model.type}</small></span></div><button onClick={()=>openModal("account")}><MoreHorizontal size={18}/></button></header><div className="chat-tools"><button className="active"><WandSparkles size={15}/>综合最优</button><button onClick={()=>openModal("memory")}><Bot size={15}/>长期记忆</button><button onClick={()=>openModal("advanced")}><Settings2 size={15}/>高级设置</button><button onClick={()=>openModal("skills")}><Zap size={15}/>技能广场</button></div><div className="conversation">{history.length===0?<div className="chat-empty"><i>{model.type==="聊天"?<MessageSquareText size={30}/>:model.type==="图片"?<ImageIcon size={30}/>:model.type==="视频"?<Video size={30}/>:<Headphones size={30}/>}</i><h3>{model.type==="聊天"?`与 ${model.name} 开始对话`:`使用 ${model.name} 生成${model.type}`}</h3><p>{model.type==="聊天"?"输入你的想法，或选择一个常用任务":"上传参考素材并描述你想要的结果"}</p>{(model.type==="聊天"?["撰写营销方案","分析一份文档","帮我优化提示词"]:["产品宣传素材","人物写真创作","短视频内容脚本"]).map(x=><button onClick={()=>setPrompt(x)} key={x}>{x}<ArrowUp size={13}/></button>)}</div>:history.map((m,i)=><div className={`bubble ${m.role}`} key={i}><i>{m.role==="ai"?model.mark:"陈"}</i><p>{m.text}</p></div>)}</div><div className={`inputbox generator-${model.type}`}><div className="asset-entry"><button title="上传文件"><Plus size={17}/><span>{model.type==="视频"?"首帧":model.type==="音频"?"音色":"参考素材"}</span></button><button onClick={()=>openModal("assets")} title="从资产库选择"><Upload size={17}/><span>资产库</span></button></div><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}} placeholder={model.type==="聊天"?"输入消息，Enter 发送...":`描述你想生成的${model.type}，支持 AI 优化提示词...`}/>{options.length>0&&<div className="generation-options">{options.map((x,i)=><button key={x} className={i===0?"primary":""}>{x}<ChevronDown size={11}/></button>)}</div>}<footer><div><button title="上传文件"><Paperclip size={18}/></button><button onClick={()=>openModal("assets")} title="从资产库选择"><Upload size={18}/></button><span>支持文件与素材库</span></div><div><small>预计 {model.price}</small><button className="send" onClick={send}>{model.type==="聊天"?<Send size={17}/>:<Sparkles size={17}/>}</button></div></footer></div><div className="chat-foot">内容由 AI 生成，请注意甄别信息准确性</div></aside>
+ return <aside className="chat-panel"><header><div><i className={model.tone}>{model.mark}</i><span><b>{model.name}</b><small>{model.vendor} · {model.type}</small></span></div><button onClick={()=>openModal("account")}><MoreHorizontal size={18}/></button></header><div className="chat-tools"><button className="active"><WandSparkles size={15}/>综合最优</button><button onClick={()=>openModal("memory")}><Bot size={15}/>长期记忆</button><button onClick={()=>openModal("advanced")}><Settings2 size={15}/>高级设置</button><button onClick={()=>openModal("skills")}><Zap size={15}/>技能广场</button></div><div className="conversation">{history.length===0?<div className="chat-empty"><i>{model.type==="聊天"?<MessageSquareText size={30}/>:model.type==="图片"?<ImageIcon size={30}/>:model.type==="视频"?<Video size={30}/>:<Headphones size={30}/>}</i><h3>{model.type==="聊天"?`与 ${model.name} 开始对话`:`使用 ${model.name} 生成${model.type}`}</h3><p>{model.type==="聊天"?"输入你的想法，或选择一个常用任务":"上传参考素材并描述你想要的结果"}</p>{(model.type==="聊天"?["撰写营销方案","分析一份文档","帮我优化提示词"]:["产品宣传素材","人物写真创作","短视频内容脚本"]).map(x=><button onClick={()=>setPrompt(x)} key={x}>{x}<ArrowUp size={13}/></button>)}</div>:history.map((m,i)=><div className={`bubble ${m.role}`} key={i}><i>{m.role==="ai"?model.mark:"陈"}</i><p>{m.text}</p></div>)}</div><div className={`inputbox generator-${model.type}`}><div className="asset-entry"><button title="上传文件"><Plus size={17}/><span>{model.type==="视频"?"首帧":model.type==="音频"?"音色":"参考素材"}</span></button><button onClick={()=>openModal("assets")} title="从资产库选择"><Upload size={17}/><span>资产库</span></button></div><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();void send()}}} placeholder={model.type==="聊天"?"输入消息，Enter 发送...":`描述你想生成的${model.type}，支持 AI 优化提示词...`}/>{options.length>0&&<div className="generation-options">{options.map((x,i)=><button key={x} className={i===0?"primary":""}>{x}<ChevronDown size={11}/></button>)}</div>}<footer><div><button title="上传文件"><Paperclip size={18}/></button><button onClick={()=>openModal("assets")} title="从资产库选择"><Upload size={18}/></button><span>支持文件与素材库</span></div><div><small>预计 {model.price}</small><button className="send" disabled={sending} aria-busy={sending} onClick={()=>void send()}>{sending?"…":model.type==="聊天"?<Send size={17}/>:<Sparkles size={17}/>}</button></div></footer></div><div className="chat-foot">内容由 AI 生成，请注意甄别信息准确性</div></aside>
 }
 
 function ContentPage({title,desc,children}:{title:string;desc:string;children:React.ReactNode}){return <div className="page"><div className="page-title"><div><h2>{title}</h2><p>{desc}</p></div><span><i/>服务运行正常</span></div>{children}</div>}

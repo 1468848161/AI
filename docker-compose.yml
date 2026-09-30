@@ -1,18 +1,105 @@
+name: ${COMPOSE_PROJECT_NAME:-lingzhi-ai}
+
 services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-newapi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/deploy.sh or scripts/deploy.ps1 first}
+      POSTGRES_DB: ${POSTGRES_DB:-newapi}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run scripts/deploy.sh or scripts/deploy.ps1 first}
+      TZ: ${TZ:-Asia/Shanghai}
+    command:
+      - /bin/sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$${REDIS_PASSWORD}" ping | grep -q PONG
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - app-network
+
+  new-api:
+    image: ${NEW_API_IMAGE:-calciumion/new-api:latest}
+    restart: unless-stopped
+    command: --log-dir /app/logs
+    environment:
+      SQL_DSN: postgresql://${POSTGRES_USER:-newapi}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-newapi}
+      REDIS_CONN_STRING: redis://:${REDIS_PASSWORD}@redis:6379
+      SESSION_SECRET: ${NEW_API_SESSION_SECRET:?Run scripts/deploy.sh or scripts/deploy.ps1 first}
+      CRYPTO_SECRET: ${NEW_API_CRYPTO_SECRET:?Run scripts/deploy.sh or scripts/deploy.ps1 first}
+      MEMORY_CACHE_ENABLED: "true"
+      BATCH_UPDATE_ENABLED: "true"
+      ERROR_LOG_ENABLED: "true"
+      GENERATE_DEFAULT_TOKEN: "false"
+      STREAMING_TIMEOUT: ${NEW_API_STREAMING_TIMEOUT:-300}
+      SESSION_COOKIE_SECURE: ${NEW_API_SESSION_COOKIE_SECURE:-false}
+      SESSION_COOKIE_TRUSTED_URL: ${NEW_API_SESSION_COOKIE_TRUSTED_URL:-}
+      NODE_NAME: new-api-primary
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - new_api_data:/data
+      - new_api_logs:/app/logs
+    ports:
+      - "127.0.0.1:${NEW_API_PORT:-3001}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O - http://127.0.0.1:3000/api/status | grep -Eq '"success":[[:space:]]*true'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - app-network
+
   ai-saas:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: lingzhi-ai-saas
     restart: unless-stopped
-    env_file:
-      - .env.production
     environment:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
+      NEW_API_BASE_URL: http://new-api:3000
+      NEW_API_ADMIN_TOKEN: ${NEW_API_ADMIN_TOKEN:-}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${AI_SAAS_PORT:-3000}:3000"
+    depends_on:
+      new-api:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -22,5 +109,17 @@ services:
         - http://127.0.0.1:3000/
       interval: 30s
       timeout: 5s
-      retries: 3
+      retries: 5
       start_period: 30s
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  new_api_data:
+  new_api_logs:
+
+networks:
+  app-network:
+    driver: bridge
