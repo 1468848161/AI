@@ -95,6 +95,14 @@ services:
       HOSTNAME: 0.0.0.0
       NEW_API_BASE_URL: http://new-api:3000
       NEW_API_ADMIN_TOKEN: ${NEW_API_ADMIN_TOKEN:-}
+      NEW_API_SESSION_SECRET: ${NEW_API_SESSION_SECRET}
+      SAAS_SESSION_SECRET: ${SAAS_SESSION_SECRET:-}
+      SAAS_ADMIN_KEY: ${SAAS_ADMIN_KEY:-}
+      SAAS_DATABASE_PATH: ${SAAS_DATABASE_PATH:-/app/data/commerce.sqlite}
+      SAAS_NEW_USER_BALANCE_CENTS: ${SAAS_NEW_USER_BALANCE_CENTS:-12860}
+      SAAS_COOKIE_SECURE: ${SAAS_COOKIE_SECURE:-false}
+    volumes:
+      - ai_saas_data:/app/data
     ports:
       - "127.0.0.1:${AI_SAAS_PORT:-3000}:3000"
     depends_on:
@@ -119,6 +127,7 @@ volumes:
   redis_data:
   new_api_data:
   new_api_logs:
+  ai_saas_data:
 
 networks:
   app-network:

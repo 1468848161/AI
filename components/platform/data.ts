@@ -15,7 +15,19 @@ export type PlatformModel = {
 
 export type AgentGroup = "图片" | "视频" | "文档" | "工具";
 export type PlatformAgent = readonly [name: string, description: string, badge: string, icon: string, group: AgentGroup];
-export type InspirationItem = readonly [title: string, subtitle: string, background: string, likes: string, tags: readonly string[], height: number];
+export type InspirationMedia = "图片" | "视频" | "画布";
+export type InspirationItem = readonly [
+  title: string,
+  subtitle: string,
+  background: string,
+  likes: string,
+  tags: readonly string[],
+  height: number,
+  id: string,
+  priceCents: number,
+  media: InspirationMedia,
+  creator: string,
+];
 
 export const platformModels: PlatformModel[] = [
   { id: "gpt-5", name: "GPT-5", vendor: "OpenAI", kind: "聊天", description: "旗舰级推理、代码与专业内容创作模型。", billing: "按 Token 计费", badge: "热门", symbol: "G", tone: "mint", tags: ["深度推理", "工具调用"] },
@@ -97,29 +109,30 @@ export const platformAgents: PlatformAgent[] = [
 ];
 
 export const inspirationItems: InspirationItem[] = [
-  ["极光银翼时尚大片", "虚拟人像 · 未来时尚", "url('/showcase/aurora-portrait.webp') center/cover", "12.8k", ["人像摄影", "未来感", "银色美学"], 330],
-  ["极光科技产品海报", "产品摄影 · 商业广告", "url('/showcase/crystal-product.webp') center/cover", "8.9k", ["产品海报", "玻璃材质", "科技感"], 235],
-  ["云海之上的未来城", "概念设计 · 科幻建筑", "url('/showcase/cloud-city.webp') center/cover", "8.2k", ["未来城市", "建筑", "电影感"], 295],
-  ["旷野电影感人像", "时尚人像 · 自然光影", "linear-gradient(155deg,#122126,#456f60 54%,#d4af7e)", "9.6k", ["人像摄影", "原生质感", "自然光"], 270],
-  ["复古杂志封面", "人物肖像 · 胶片质感", "linear-gradient(145deg,#382017,#9b6245 55%,#efd09f)", "7.5k", ["杂志", "复古", "排版"], 355],
-  ["水墨山河动画", "国风动漫 · 运镜", "linear-gradient(155deg,#101b18,#4e6e5b 52%,#dbe3d6)", "10.1k", ["东方美学", "水墨", "国风"], 240],
-  ["透明玻璃护肤品", "电商主图 · 材质光影", "url('/showcase/crystal-product.webp') 30% center/cover", "6.8k", ["电商", "护肤品", "质感"], 320],
-  ["森林里的微缩世界", "治愈插画 · 故事感", "linear-gradient(145deg,#102318,#4d7948 50%,#d1bd72)", "9.2k", ["微缩世界", "治愈", "场景"], 260],
-  ["紫夜城市肖像", "霓虹人像 · 潮流", "url('/showcase/aurora-portrait.webp') 70% center/cover", "5.7k", ["霓虹", "都市", "写真"], 250],
-  ["山巅空间站", "建筑概念 · 云海", "url('/showcase/cloud-city.webp') 62% center/cover", "6.4k", ["建筑", "科幻", "云海"], 350],
-  ["新中式茶饮包装", "品牌设计 · 包装", "linear-gradient(135deg,#29180f,#9c6439 48%,#e7c58c)", "4.9k", ["新中式", "包装设计", "品牌"], 225],
-  ["机械昆虫设定集", "角色设定 · 结构透视", "linear-gradient(145deg,#111418,#49505b 54%,#af8d5f)", "7.1k", ["三视图", "机械", "CG"], 310],
-  ["夏日海边写真", "生活感 · 日落余晖", "linear-gradient(165deg,#4382a2,#efb06e 58%,#f4d6b6)", "11.2k", ["写真", "海边", "日落"], 365],
-  ["黏土风咖啡店", "定格动画 · 可爱", "linear-gradient(145deg,#6f4c34,#d59d6f 55%,#f2d8b8)", "3.8k", ["黏土", "定格动画", "治愈"], 245],
-  ["赛博机甲角色", "游戏概念 · 设定", "linear-gradient(145deg,#171522,#493773 52%,#27a7bd)", "8.4k", ["机甲", "角色设定", "赛博朋克"], 330],
-  ["东方庭院空间", "室内设计 · 禅意", "linear-gradient(145deg,#d8d2c6,#8c9680 55%,#34443b)", "5.2k", ["室内设计", "东方美学", "写实"], 270],
-  ["奢华珠宝特写", "商业广告 · 微距", "linear-gradient(145deg,#0b0c10,#293249 55%,#d6a85d)", "6.9k", ["珠宝", "商业广告", "微距"], 300],
-  ["奇幻森林守护者", "角色插画 · 电影感", "linear-gradient(145deg,#0c251b,#2f6c4d 50%,#9bc085)", "9.9k", ["奇幻", "角色", "电影感"], 350],
+  ["极光银翼时尚大片", "虚拟人像 · 未来时尚", "url('/showcase/aurora-portrait.webp') center/cover", "12.8k", ["人像摄影", "未来感", "银色美学"], 330, "aurora-silver-fashion", 990, "图片", "灵感视觉实验室"],
+  ["极光科技产品海报", "产品摄影 · 商业广告", "url('/showcase/crystal-product.webp') center/cover", "8.9k", ["产品海报", "玻璃材质", "科技感"], 235, "aurora-tech-product", 690, "图片", "商业视觉研究所"],
+  ["云海之上的未来城", "概念设计 · 科幻建筑", "url('/showcase/cloud-city.webp') center/cover", "8.2k", ["未来城市", "建筑", "电影感"], 295, "cloud-future-city", 0, "图片", "云端建筑师"],
+  ["旷野电影感人像", "时尚人像 · 自然光影", "linear-gradient(155deg,#122126,#456f60 54%,#d4af7e)", "9.6k", ["人像摄影", "原生质感", "自然光"], 270, "wilderness-cinematic-portrait", 1290, "图片", "光影叙事"],
+  ["复古杂志封面", "人物肖像 · 胶片质感", "linear-gradient(145deg,#382017,#9b6245 55%,#efd09f)", "7.5k", ["杂志", "复古", "排版"], 355, "retro-magazine-cover", 590, "画布", "排版公社"],
+  ["水墨山河动画", "国风动漫 · 运镜", "linear-gradient(155deg,#101b18,#4e6e5b 52%,#dbe3d6)", "10.1k", ["东方美学", "水墨", "国风"], 240, "ink-landscape-animation", 1590, "视频", "东方影像局"],
+  ["透明玻璃护肤品", "电商主图 · 材质光影", "url('/showcase/crystal-product.webp') 30% center/cover", "6.8k", ["电商", "护肤品", "质感"], 320, "glass-skincare-product", 790, "图片", "电商炼金室"],
+  ["森林里的微缩世界", "治愈插画 · 故事感", "linear-gradient(145deg,#102318,#4d7948 50%,#d1bd72)", "9.2k", ["微缩世界", "治愈", "场景"], 260, "miniature-forest-world", 0, "图片", "小世界工坊"],
+  ["紫夜城市肖像", "霓虹人像 · 潮流", "url('/showcase/aurora-portrait.webp') 70% center/cover", "5.7k", ["霓虹", "都市", "写真"], 250, "purple-night-portrait", 890, "图片", "霓虹计划"],
+  ["山巅空间站", "建筑概念 · 云海", "url('/showcase/cloud-city.webp') 62% center/cover", "6.4k", ["建筑", "科幻", "云海"], 350, "summit-space-station", 990, "图片", "未来场景组"],
+  ["新中式茶饮包装", "品牌设计 · 包装", "linear-gradient(135deg,#29180f,#9c6439 48%,#e7c58c)", "4.9k", ["新中式", "包装设计", "品牌"], 225, "new-chinese-tea-package", 1990, "画布", "品牌新造"],
+  ["机械昆虫设定集", "角色设定 · 结构透视", "linear-gradient(145deg,#111418,#49505b 54%,#af8d5f)", "7.1k", ["三视图", "机械", "CG"], 310, "mechanical-insect-sheet", 1090, "画布", "结构幻想"],
+  ["夏日海边写真", "生活感 · 日落余晖", "linear-gradient(165deg,#4382a2,#efb06e 58%,#f4d6b6)", "11.2k", ["写真", "海边", "日落"], 365, "summer-beach-portrait", 490, "图片", "日落摄影棚"],
+  ["黏土风咖啡店", "定格动画 · 可爱", "linear-gradient(145deg,#6f4c34,#d59d6f 55%,#f2d8b8)", "3.8k", ["黏土", "定格动画", "治愈"], 245, "clay-coffee-shop", 690, "视频", "黏土日记"],
+  ["赛博机甲角色", "游戏概念 · 设定", "linear-gradient(145deg,#171522,#493773 52%,#27a7bd)", "8.4k", ["机甲", "角色设定", "赛博朋克"], 330, "cyber-mecha-character", 1390, "画布", "机甲设计局"],
+  ["东方庭院空间", "室内设计 · 禅意", "linear-gradient(145deg,#d8d2c6,#8c9680 55%,#34443b)", "5.2k", ["室内设计", "东方美学", "写实"], 270, "oriental-courtyard", 1690, "图片", "空间美学社"],
+  ["奢华珠宝特写", "商业广告 · 微距", "linear-gradient(145deg,#0b0c10,#293249 55%,#d6a85d)", "6.9k", ["珠宝", "商业广告", "微距"], 300, "luxury-jewelry-closeup", 1190, "图片", "商业镜头组"],
+  ["奇幻森林守护者", "角色插画 · 电影感", "linear-gradient(145deg,#0c251b,#2f6c4d 50%,#9bc085)", "9.9k", ["奇幻", "角色", "电影感"], 350, "fantasy-forest-guardian", 990, "图片", "幻想画室"],
 ];
 
 export const adminMenu = [
   ["dashboard", "运营概览"], ["tenants", "租户管理"], ["users", "用户管理"],
   ["channels", "模型渠道"], ["models", "模型管理"], ["plans", "套餐与计费"],
+  ["inspirations", "灵感商品"],
   ["orders", "订单管理"], ["billing", "资金流水"], ["tasks", "生成任务"],
   ["content", "内容审核"], ["tickets", "工单客服"], ["risk", "风控中心"],
   ["roles", "角色权限"], ["themes", "UI 主题"], ["settings", "系统设置"],

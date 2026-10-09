@@ -27,16 +27,26 @@ if [[ ! -f "$env_file" ]]; then
   redis_password="$(openssl rand -hex 24)"
   session_secret="$(openssl rand -hex 32)"
   crypto_secret="$(openssl rand -hex 32)"
+  saas_session_secret="$(openssl rand -hex 32)"
+  saas_admin_key="$(openssl rand -hex 24)"
   sed -i \
     -e "s/CHANGE_ME_POSTGRES_PASSWORD/$postgres_password/g" \
     -e "s/CHANGE_ME_REDIS_PASSWORD/$redis_password/g" \
     -e "s/CHANGE_ME_NEW_API_SESSION_SECRET/$session_secret/g" \
     -e "s/CHANGE_ME_NEW_API_CRYPTO_SECRET/$crypto_secret/g" \
+    -e "s/CHANGE_ME_SAAS_SESSION_SECRET/$saas_session_secret/g" \
+    -e "s/CHANGE_ME_SAAS_ADMIN_KEY/$saas_admin_key/g" \
     "$env_file"
   chmod 600 "$env_file"
   echo "Created environment file with random database, Redis, and session secrets."
 else
-  echo "Using existing environment file; no secrets were changed."
+  if ! grep -q '^SAAS_SESSION_SECRET=' "$env_file"; then
+    printf '\nSAAS_SESSION_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$env_file"
+  fi
+  if ! grep -q '^SAAS_ADMIN_KEY=' "$env_file"; then
+    printf 'SAAS_ADMIN_KEY=%s\n' "$(openssl rand -hex 24)" >> "$env_file"
+  fi
+  echo "Using existing environment file; existing secrets were preserved and missing SaaS keys were added."
 fi
 
 if [[ "$mode" == "--init-only" ]]; then

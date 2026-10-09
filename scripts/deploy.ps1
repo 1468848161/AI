@@ -29,11 +29,22 @@ if (-not (Test-Path $EnvFile)) {
     $Content = $Content.Replace("CHANGE_ME_REDIS_PASSWORD", (New-HexSecret 24))
     $Content = $Content.Replace("CHANGE_ME_NEW_API_SESSION_SECRET", (New-HexSecret 32))
     $Content = $Content.Replace("CHANGE_ME_NEW_API_CRYPTO_SECRET", (New-HexSecret 32))
+    $Content = $Content.Replace("CHANGE_ME_SAAS_SESSION_SECRET", (New-HexSecret 32))
+    $Content = $Content.Replace("CHANGE_ME_SAAS_ADMIN_KEY", (New-HexSecret 24))
     $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($EnvFile, $Content, $Utf8NoBom)
     Write-Host "Created environment file with random database, Redis, and session secrets."
 } else {
-    Write-Host "Using existing environment file; no secrets were changed."
+    $Content = [System.IO.File]::ReadAllText($EnvFile)
+    if ($Content -notmatch "(?m)^SAAS_SESSION_SECRET=") {
+        $Content += "`nSAAS_SESSION_SECRET=$(New-HexSecret 32)`n"
+    }
+    if ($Content -notmatch "(?m)^SAAS_ADMIN_KEY=") {
+        $Content += "SAAS_ADMIN_KEY=$(New-HexSecret 24)`n"
+    }
+    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($EnvFile, $Content, $Utf8NoBom)
+    Write-Host "Using existing environment file; existing secrets were preserved and missing SaaS keys were added."
 }
 
 if ($InitOnly) {

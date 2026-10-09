@@ -5,9 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight, Bot, Boxes, Braces, Check, ChevronDown, CircleHelp,
   Compass, Copy, Eye, File, FileText, Headphones, Heart, History, Image as ImageIcon,
-  KeyRound, Library, ListFilter, LogIn, Maximize2, Menu, MessageCircle,
+  KeyRound, Library, ListFilter, LockKeyhole, LogIn, Maximize2, Menu, MessageCircle,
   MessageSquareText, MoreHorizontal, Pin, PinOff, Play, Plus,
-  Search, Send, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, Star,
+  Search, Send, Settings2, ShieldCheck, ShoppingCart, SlidersHorizontal, Sparkles, Star,
   Trash2, Upload, UserRound, Video, WalletCards, WandSparkles, X, Zap,
 } from "lucide-react";
 import { BrandLogo, siteThemes, useSiteTheme, type SiteTheme } from "./brand";
@@ -16,6 +16,8 @@ import { inspirationItems, platformAgents, platformModels, type AgentGroup, type
 type MenuKey = "models" | "agents" | "inspiration";
 type ModalKey = "login" | "advanced" | "memory" | "skills" | "assets" | "recharge" | "profile" | "help" | null;
 type ChatMessage = { role: "user" | "assistant"; content: string; time: string };
+type InspirationAccess = { priceCents: number; purchased: boolean; enabled: boolean; sales: number };
+type PurchaseResult = { orderNo: string; amountCents: number; balanceCents: number; prompt: string; alreadyOwned: boolean };
 
 const categories: ("全部" | ModelKind | "我的")[] = ["全部", "聊天", "图片", "视频", "音频", "我的"];
 const agentCategories: ("全部" | AgentGroup)[] = ["全部", "图片", "视频", "文档", "工具"];
@@ -43,6 +45,11 @@ export default function WorkspaceApp() {
   const [toast, setToast] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [favoriteIdeas, setFavoriteIdeas] = useState<string[]>([]);
+  const [ideaAccess, setIdeaAccess] = useState<Record<string, InspirationAccess>>(() => Object.fromEntries(inspirationItems.map(item => [item[6], { priceCents: item[7], purchased: item[7] === 0, enabled: true, sales: 0 }])));
+  const [balanceCents, setBalanceCents] = useState(12860);
+  const [purchaseTarget, setPurchaseTarget] = useState<InspirationItem | null>(null);
+  const [purchasing, setPurchasing] = useState(false);
+  const [purchaseError, setPurchaseError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const { theme, changeTheme } = useSiteTheme();
 
@@ -57,6 +64,18 @@ export default function WorkspaceApp() {
     if (savedAgentPins) {
       try { setPinnedAgents(JSON.parse(savedAgentPins)); } catch { /* keep defaults */ }
     }
+    const savedFavorites = localStorage.getItem("lingzhi-idea-favorites");
+    if (savedFavorites) {
+      try { setFavoriteIdeas(JSON.parse(savedFavorites)); } catch { /* keep defaults */ }
+    }
+    void fetch("/api/inspirations", { cache: "no-store" }).then(async response => {
+      if (!response.ok) throw new Error("灵感商品加载失败");
+      return await response.json() as { balanceCents: number; items: ({ id: string } & InspirationAccess)[] };
+    }).then(payload => {
+      setBalanceCents(payload.balanceCents);
+      setIdeaAccess(Object.fromEntries(payload.items.map(item => [item.id, { priceCents: item.priceCents, purchased: item.purchased, enabled: item.enabled, sales: item.sales }])));
+      setLoggedIn(true);
+    }).catch(() => { /* keep the public catalog available if commerce storage is unavailable */ });
     void fetch("/api/models").then(async response => await response.json() as { data?: { id: string; owned_by?: string }[]; demo?: boolean }).then(payload => {
       if (payload.demo || !payload.data?.length) return;
       const tones = ["mint","amber","blue","indigo","violet","cyan","pink","orange","purple","rose","sky","teal"];
@@ -89,6 +108,14 @@ export default function WorkspaceApp() {
     setPinnedAgents(current => {
       const next = current.includes(name) ? current.filter(item => item !== name) : [...current, name];
       localStorage.setItem("lingzhi-agent-pins", JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function toggleIdeaFavorite(title: string) {
+    setFavoriteIdeas(current => {
+      const next = current.includes(title) ? current.filter(item => item !== title) : [...current, title];
+      localStorage.setItem("lingzhi-idea-favorites", JSON.stringify(next));
       return next;
     });
   }
@@ -144,6 +171,43 @@ export default function WorkspaceApp() {
     }
   }
 
+  function reusePrompt(value: string) {
+    setPrompt(value);
+    setMenu("models");
+    setSelected(catalogModels.find(model => model.kind === "图片") || catalogModels[0]);
+  }
+
+  async function unlockIdea(item: InspirationItem) {
+    const access = ideaAccess[item[6]] || { priceCents: item[7], purchased: item[7] === 0, enabled: true, sales: 0 };
+    if (!access.enabled) {
+      notify("该灵感商品已下架");
+      return;
+    }
+    if (access.priceCents > 0 && !access.purchased && purchaseTarget?.[6] !== item[6]) {
+      setPurchaseError("");
+      setPurchaseTarget(item);
+      return;
+    }
+    setPurchasing(true);
+    setPurchaseError("");
+    try {
+      const response = await fetch(`/api/inspirations/${encodeURIComponent(item[6])}/purchase`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedPriceCents: access.priceCents }) });
+      const payload = await response.json() as PurchaseResult & { error?: string; code?: string };
+      if (!response.ok) throw new Error(payload.error || "购买失败");
+      setBalanceCents(payload.balanceCents);
+      setIdeaAccess(current => ({ ...current, [item[6]]: { ...access, purchased: true, sales: access.sales + (payload.alreadyOwned ? 0 : 1) } }));
+      setPurchaseTarget(null);
+      notify(payload.alreadyOwned ? "已解锁同款创作参数" : access.priceCents === 0 ? "免费模板已领取" : `购买成功 · ${payload.orderNo}`);
+      reusePrompt(payload.prompt);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "购买失败，请稍后重试";
+      setPurchaseError(message);
+      notify(message);
+    } finally {
+      setPurchasing(false);
+    }
+  }
+
   function openMenu(next: MenuKey) {
     setMenu(next);
     setQuery("");
@@ -188,7 +252,7 @@ export default function WorkspaceApp() {
       </>}
 
       <footer className="sidebar-account">
-        {loggedIn ? <button onClick={() => setModal("profile")}><i>灵</i><span><b>演示用户</b><small>余额 ¥128.60</small></span><MoreHorizontal/></button> : <button onClick={() => setModal("login")}><LogIn/><span><b>登录 / 注册</b><small>登录后同步创作记录</small></span><ArrowRight/></button>}
+        {loggedIn ? <button onClick={() => setModal("profile")}><i>灵</i><span><b>演示用户</b><small>余额 ¥{(balanceCents / 100).toFixed(2)}</small></span><MoreHorizontal/></button> : <button onClick={() => setModal("login")}><LogIn/><span><b>登录 / 注册</b><small>登录后同步创作记录</small></span><ArrowRight/></button>}
       </footer>
     </aside>
 
@@ -196,7 +260,7 @@ export default function WorkspaceApp() {
       <header className="creator-topbar">
         <div><button className="mobile-menu" onClick={() => setSidebarOpen(true)}><Menu/></button><button className="new-creation" onClick={() => { setMessages([]); setPrompt(""); }}><Plus/>{menu === "agents" ? "新建项目" : "新建对话"}</button><button onClick={() => setHistoryOpen(!historyOpen)}><History/>对话历史</button></div>
         {menu === "models" && <button className="current-model-pill"><i className={`model-symbol ${selected.tone}`}>{selected.symbol}</i>{selected.name}<ChevronDown/></button>}
-        <div><button onClick={() => setModal("help")}><CircleHelp/><span>玩法说明</span></button><button onClick={() => setModal("recharge")} className="gold-action"><Zap/><span>充值</span></button><button onClick={() => setModal("login")} className="login-action"><LogIn/><span>登录</span></button><button onClick={() => setModal("profile")} className="app-grid-action"><Boxes/></button></div>
+        <div><button onClick={() => setModal("help")}><CircleHelp/><span>玩法说明</span></button><button onClick={() => setModal("recharge")} className="gold-action"><Zap/><span>充值</span></button>{loggedIn?<button onClick={() => setModal("profile")} className="login-action"><UserRound/><span>账户</span></button>:<button onClick={() => setModal("login")} className="login-action"><LogIn/><span>登录</span></button>}<button onClick={() => setModal("profile")} className="app-grid-action"><Boxes/></button></div>
       </header>
 
       {menu === "models" && <CreatorWorkspace model={selected} messages={messages} sending={sending} onSelectSuggestion={setPrompt}/>}
@@ -207,8 +271,9 @@ export default function WorkspaceApp() {
       {menu === "inspiration" && <InspirationWorkspace
         items={filteredIdeas}
         favorites={favoriteIdeas}
-        onFavorite={(title) => setFavoriteIdeas(items => items.includes(title) ? items.filter(item => item !== title) : [...items, title])}
-        onReuse={(text) => { setPrompt(text); setMenu("models"); setSelected(catalogModels.find(model => model.kind === "图片") || catalogModels[0]); }}
+        access={ideaAccess}
+        onFavorite={toggleIdeaFavorite}
+        onReuse={unlockIdea}
       />}
 
       {menu === "models" && <section className="composer-dock">
@@ -236,7 +301,17 @@ export default function WorkspaceApp() {
       {historyOpen && <HistoryDrawer messages={messages} onClose={() => setHistoryOpen(false)}/>}
     </section>
 
-    {modal && <WorkspaceModal modal={modal} close={() => setModal(null)} login={() => { setLoggedIn(true); setModal(null); notify("登录成功，欢迎回来"); }} notify={notify} theme={theme} changeTheme={changeTheme}/>}
+    {purchaseTarget && <PurchaseModal
+      item={purchaseTarget}
+      access={ideaAccess[purchaseTarget[6]] || { priceCents: purchaseTarget[7], purchased: false, enabled: true, sales: 0 }}
+      balanceCents={balanceCents}
+      loading={purchasing}
+      error={purchaseError}
+      close={() => { if (!purchasing) { setPurchaseTarget(null); setPurchaseError(""); } }}
+      confirm={() => void unlockIdea(purchaseTarget)}
+      recharge={() => { setPurchaseTarget(null); setModal("recharge"); }}
+    />}
+    {modal && <WorkspaceModal modal={modal} close={() => setModal(null)} login={() => { setLoggedIn(true); setModal(null); notify("登录成功，欢迎回来"); }} notify={notify} theme={theme} changeTheme={changeTheme} balanceCents={balanceCents}/>}
   </main>;
 }
 
@@ -267,30 +342,57 @@ function AgentWorkspace({ agent, onStart }: { agent: PlatformAgent; onStart: (pr
 
 function LayersIcon(){return <Boxes/>}
 
-function InspirationWorkspace({ items, favorites, onFavorite, onReuse }: { items: InspirationItem[]; favorites: string[]; onFavorite: (title: string) => void; onReuse: (prompt: string) => void }) {
+function InspirationWorkspace({ items, favorites, access, onFavorite, onReuse }: { items: InspirationItem[]; favorites: string[]; access: Record<string, InspirationAccess>; onFavorite: (title: string) => void; onReuse: (item: InspirationItem) => void }) {
   const [view,setView]=useState<"广场"|"作品"|"收藏"|"记录">("广场");
   const [media,setMedia]=useState<"全部"|"图片"|"视频"|"画布">("全部");
   const displayed=items
+    .filter(item=>access[item[6]]?.enabled !== false||access[item[6]]?.purchased)
     .filter(item=>view!=="收藏"||favorites.includes(item[0]))
     .filter((item,index)=>view!=="作品"||index<6)
-    .filter((item,index)=>view!=="记录"||index>Math.max(0,items.length-7))
-    .filter(item=>media==="全部"||media==="图片"||media==="视频"&&(item[1].includes("动画")||item[1].includes("视频"))||media==="画布"&&item[4].includes("创意"));
-  return <div className="inspiration-workspace"><header><nav>{[["广场","灵感广场"],["作品","我的作品集"],["收藏","我的收藏"],["记录","使用记录"]].map(item=><button className={view===item[0]?"active":""} onClick={()=>setView(item[0] as typeof view)} key={item[0]}>{item[1]}</button>)}</nav><div>{[["全部","全部"],["图片","图片"],["视频","视频"],["画布","无限画布"]].map(item=><button className={media===item[0]?"active":""} onClick={()=>setMedia(item[0] as typeof media)} key={item[0]}>{item[1]}</button>)}</div></header><section className="idea-masonry">{displayed.map((item, index) => <article key={item[0]} style={{ background: item[2], height: item[5] }}><button className={`idea-favorite ${favorites.includes(item[0]) ? "active" : ""}`} aria-label="收藏" onClick={() => onFavorite(item[0])}><Heart/></button><span className="idea-mark">{index > 2 ? ["✦", "人像", "AI", "CITY", "FILM", "山水", "GLASS", "森"][index % 8] : ""}</span><footer><b>{item[0]}</b><div>{item[4].map(tag => <small key={tag}>{tag}</small>)}</div><span><em><Eye/>{item[3]}</em><em><MessageCircle/>0</em></span></footer><button className="idea-reuse" onClick={() => onReuse(`参考「${item[0]}」的构图、色彩与质感，生成：`)}>复用同款</button></article>)}</section>{displayed.length === 0 && <div className="idea-empty"><Compass/>{view==="收藏"?"还没有收藏作品":"没有找到匹配的灵感作品"}</div>}</div>;
+    .filter(item=>view!=="记录"||access[item[6]]?.purchased)
+    .filter(item=>media==="全部"||item[8]===media);
+  return <div className="inspiration-workspace">
+    <header><nav>{[["广场","灵感广场"],["作品","我的作品集"],["收藏","我的收藏"],["记录","已购模板"]].map(item=><button className={view===item[0]?"active":""} onClick={()=>setView(item[0] as typeof view)} key={item[0]}>{item[1]}</button>)}</nav><div>{[["全部","全部"],["图片","图片"],["视频","视频"],["画布","无限画布"]].map(item=><button className={media===item[0]?"active":""} onClick={()=>setMedia(item[0] as typeof media)} key={item[0]}>{item[1]}</button>)}</div></header>
+    <section className="idea-masonry">{displayed.map((item, index) => {
+      const state=access[item[6]]||{priceCents:item[7],purchased:item[7]===0,enabled:true,sales:0};
+      const buttonText=state.purchased?(state.priceCents===0?"免费复用":"已购买 · 复用"):`¥${(state.priceCents/100).toFixed(2)} 购买同款`;
+      return <article key={item[6]} style={{ background: item[2], height: item[5] }}>
+        <span className={`idea-price ${state.purchased?"owned":""}`}>{state.purchased?(state.priceCents===0?"免费":"已购"):`¥${(state.priceCents/100).toFixed(2)}`}</span>
+        <button className={`idea-favorite ${favorites.includes(item[0]) ? "active" : ""}`} aria-label="收藏" onClick={() => onFavorite(item[0])}><Heart/></button>
+        <span className="idea-mark">{index > 2 ? ["✦", "人像", "AI", "CITY", "FILM", "山水", "GLASS", "森"][index % 8] : ""}</span>
+        <footer><b>{item[0]}</b><div>{item[4].map(tag => <small key={tag}>{tag}</small>)}</div><span><em><Eye/>{item[3]}</em><em><ShoppingCart/>{state.sales} 人购买</em></span></footer>
+        <button className="idea-reuse" onClick={() => onReuse(item)}>{state.purchased?<Sparkles/>:<LockKeyhole/>}{buttonText}</button>
+      </article>;
+    })}</section>
+    {displayed.length === 0 && <div className="idea-empty"><Compass/>{view==="收藏"?"还没有收藏作品":view==="记录"?"还没有购买灵感模板":"没有找到匹配的灵感作品"}</div>}
+  </div>;
+}
+
+function PurchaseModal({item,access,balanceCents,loading,error,close,confirm,recharge}:{item:InspirationItem;access:InspirationAccess;balanceCents:number;loading:boolean;error:string;close:()=>void;confirm:()=>void;recharge:()=>void}){
+  const enough=balanceCents>=access.priceCents;
+  return <div className="workspace-overlay purchase-overlay" onMouseDown={close}><section className="purchase-modal" onMouseDown={event=>event.stopPropagation()}>
+    <header><div><i><ShoppingCart/></i><span><b>购买同款模板</b><small>购买后解锁，可重复使用</small></span></div><button onClick={close} disabled={loading}><X/></button></header>
+    <div className="purchase-product"><div style={{background:item[2]}}/><span><small>{item[8]}模板 · {item[9]}</small><b>{item[0]}</b><p>{item[1]}</p></span></div>
+    <div className="purchase-summary"><span>模板价格<b>¥{(access.priceCents/100).toFixed(2)}</b></span><span>账户余额<strong>¥{(balanceCents/100).toFixed(2)}</strong></span><span>购买后余额<strong>¥{(Math.max(0,balanceCents-access.priceCents)/100).toFixed(2)}</strong></span></div>
+    <p className="purchase-note"><LockKeyhole/>支付成功后，完整创作参数仅对当前账户开放，并自动填入对应创作工作台。</p>
+    {error&&<p className="purchase-error">{error}</p>}
+    <footer><button onClick={close} disabled={loading}>取消</button>{enough?<button className="confirm" onClick={confirm} disabled={loading}>{loading?"处理中…":`确认支付 ¥${(access.priceCents/100).toFixed(2)}`}</button>:<button className="confirm" onClick={recharge}>余额不足，去充值</button>}</footer>
+  </section></div>;
 }
 
 function HistoryDrawer({ messages, onClose }: { messages: ChatMessage[]; onClose: () => void }) {
   return <aside className="history-drawer"><header><span><History/>对话历史</span><button onClick={onClose}><X/></button></header><button className="new-history"><Plus/>新建对话</button><label><Search/><input placeholder="搜索历史对话"/></label><div>{messages.length ? ["当前创作", "品牌方案与内容规划", "产品视觉提示词优化"].map((item, index) => <button className={index === 0 ? "active" : ""} key={item}><MessageSquareText/><span><b>{item}</b><small>{index === 0 ? "刚刚" : `${index} 天前`}</small></span><MoreHorizontal/></button>) : <p><History/>还没有历史对话</p>}</div></aside>;
 }
 
-function WorkspaceModal({ modal, close, login, notify, theme, changeTheme }: { modal: Exclude<ModalKey, null>; close: () => void; login: () => void; notify: (text: string) => void; theme: SiteTheme; changeTheme: (theme: SiteTheme) => void }) {
+function WorkspaceModal({ modal, close, login, notify, theme, changeTheme, balanceCents }: { modal: Exclude<ModalKey, null>; close: () => void; login: () => void; notify: (text: string) => void; theme: SiteTheme; changeTheme: (theme: SiteTheme) => void; balanceCents: number }) {
   return <div className="workspace-overlay" onMouseDown={close}><section className={`workspace-modal modal-${modal}`} onMouseDown={event => event.stopPropagation()}><header><div><i>{modal === "login" ? <LogIn/> : modal === "recharge" ? <WalletCards/> : modal === "assets" ? <Library/> : modal === "skills" ? <WandSparkles/> : modal === "memory" ? <Sparkles/> : modal === "profile" ? <UserRound/> : modal === "help" ? <CircleHelp/> : <Settings2/>}</i><span><b>{{login:"欢迎回来",advanced:"高级设置",memory:"长期记忆",skills:"技能广场",assets:"我的资产库",recharge:"在线充值",profile:"账户与界面",help:"使用帮助"}[modal]}</b><small>{{login:"登录后同步作品、余额和历史记录",advanced:"调整模型参数与输出偏好",memory:"让 AI 记住长期有效的信息",skills:"为模型安装专业能力",assets:"复用已上传和生成的素材",recharge:"充值余额实时到账",profile:"账户信息与多套 UI 切换",help:"快速了解工作台操作"}[modal]}</small></span></div><button onClick={close}><X/></button></header>
     {modal === "login" && <div className="login-modal-body"><BrandLogo/><div className="login-tabs"><button className="active">密码登录</button><button>手机登录</button><button>邮箱登录</button></div><label>账号<input placeholder="请输入手机号或邮箱"/></label><label>密码<input type="password" placeholder="请输入密码"/></label><label className="agreement"><input type="checkbox"/>我已阅读并同意《用户协议》和《隐私政策》</label><button className="modal-primary" onClick={login}>立即登录</button><p>没有账号？使用验证码登录即可自动注册</p></div>}
     {modal === "advanced" && <div className="settings-modal-body"><div><h3>模型参数</h3>{[["温度","0.7"],["最大输出","4,096 tokens"],["上下文","自动"],["随机种子","关闭"]].map(item => <label key={item[0]}><span><b>{item[0]}</b><small>控制模型生成表现</small></span><button>{item[1]}<ChevronDown/></button></label>)}</div><div><h3>输出偏好</h3>{["流式输出","自动联网","保留上下文","失败自动重试"].map((item,index) => <label key={item}><span><b>{item}</b><small>当前会话生效</small></span><button className={index < 2 ? "toggle on" : "toggle"}><i/></button></label>)}</div><button className="modal-primary" onClick={() => { notify("高级设置已保存"); close(); }}>保存设置</button></div>}
     {modal === "memory" && <div className="memory-modal-body"><div><input placeholder="添加一条希望 AI 长期记住的信息…"/><button onClick={() => notify("记忆已添加")}><Plus/>添加</button></div>{["我偏好简洁直接的中文回答", "涉及方案时优先输出可执行步骤", "品牌主色为青蓝色"].map(item => <article key={item}><Sparkles/><span>{item}</span><button><Trash2/></button></article>)}</div>}
     {modal === "skills" && <div className="skills-modal-body"><label><Search/><input placeholder="搜索技能"/></label><div>{[["联网搜索","获取实时网页信息","🌐"],["文档分析","读取 PDF、Word 与表格","📄"],["代码执行","运行代码并分析结果","⌘"],["图像理解","识别并分析上传图片","◉"],["数据图表","生成可视化图表","▥"],["网页总结","提取网页关键信息","✦"]].map((item,index)=><article key={item[0]}><i>{item[2]}</i><span><b>{item[0]}</b><small>{item[1]}</small></span><button className={index<3?"installed":""} onClick={()=>notify(index<3?"技能已停用":"技能已安装")}>{index<3?"已安装":"安装"}</button></article>)}</div></div>}
     {modal === "assets" && <div className="assets-modal-body"><div className="asset-toolbar"><label><Search/><input placeholder="搜索资产名称"/></label><button><Upload/>上传素材</button></div><div className="asset-tabs"><button className="active">全部</button><button>图片</button><button>视频</button><button>文档</button></div><div className="asset-cards">{["品牌产品图.png","宣传片参考.mp4","活动方案.docx","人物参考照.jpg","品牌规范.pdf","片头音乐.mp3"].map((item,index)=><article key={item}><i>{index===1?<Video/>:index===2||index===4?<FileText/>:index===5?<Headphones/>:<ImageIcon/>}</i><span><b>{item}</b><small>{index%2?"昨天":"今天"}上传</small></span><button onClick={()=>{notify(`${item} 已添加`);close();}}>选择</button></article>)}</div></div>}
-    {modal === "recharge" && <div className="recharge-modal-body"><div className="balance-line"><span>当前余额<small>账户可用额度</small></span><b>¥128.60</b></div><label>选择充值金额</label><div className="amount-grid">{[20,50,100,200,500,1000].map((item,index)=><button className={index===2?"active":""} key={item}><b>¥{item}</b>{index===4&&<small>赠 ¥20</small>}</button>)}</div><div className="payment-row"><button className="active">微信支付</button><button>支付宝</button><button>卡密充值</button></div><button className="modal-primary" onClick={()=>notify("请选择正式支付商户后启用收款")}>立即支付</button></div>}
-    {modal === "profile" && <div className="profile-modal-body"><div className="profile-card"><i>灵</i><span><b>演示用户 <em>专业版</em></b><small>user@example.com · 余额 ¥128.60</small></span><Link href="/account">进入账户中心 <ArrowRight/></Link></div><h3>界面主题</h3><div className="theme-choices">{siteThemes.map(item=><button key={item.id} className={theme===item.id?"active":""} onClick={()=>changeTheme(item.id)}><span>{item.colors.map(color=><i style={{background:color}} key={color}/>)}</span><b>{item.name}</b><small>{item.description}</small>{theme===item.id&&<Check/>}</button>)}</div><div className="profile-links"><Link href="/account"><WalletCards/>余额与账单</Link><Link href="/account?tab=keys"><KeyRound/>API 密钥</Link><Link href="/admin"><ShieldCheck/>运营后台</Link></div></div>}
+    {modal === "recharge" && <div className="recharge-modal-body"><div className="balance-line"><span>当前余额<small>账户可用额度</small></span><b>¥{(balanceCents/100).toFixed(2)}</b></div><label>选择充值金额</label><div className="amount-grid">{[20,50,100,200,500,1000].map((item,index)=><button className={index===2?"active":""} key={item}><b>¥{item}</b>{index===4&&<small>赠 ¥20</small>}</button>)}</div><div className="payment-row"><button className="active">微信支付</button><button>支付宝</button><button>卡密充值</button></div><button className="modal-primary" onClick={()=>notify("请选择正式支付商户后启用收款")}>立即支付</button></div>}
+    {modal === "profile" && <div className="profile-modal-body"><div className="profile-card"><i>灵</i><span><b>演示用户 <em>专业版</em></b><small>user@example.com · 余额 ¥{(balanceCents/100).toFixed(2)}</small></span><Link href="/account">进入账户中心 <ArrowRight/></Link></div><h3>界面主题</h3><div className="theme-choices">{siteThemes.map(item=><button key={item.id} className={theme===item.id?"active":""} onClick={()=>changeTheme(item.id)}><span>{item.colors.map(color=><i style={{background:color}} key={color}/>)}</span><b>{item.name}</b><small>{item.description}</small>{theme===item.id&&<Check/>}</button>)}</div><div className="profile-links"><Link href="/account"><WalletCards/>余额与账单</Link><Link href="/account?tab=keys"><KeyRound/>API 密钥</Link><Link href="/admin"><ShieldCheck/>运营后台</Link></div></div>}
     {modal === "help" && <div className="help-modal-body">{[["1","选择模型","从左侧按聊天、图片、视频或音频筛选模型"],["2","添加资料","在输入区上传图片、视频、文档或从资产库选择"],["3","调整参数","使用高级设置、长期记忆和技能控制结果"],["4","开始生成","输入需求后发送，任务会自动保存到生成记录"]].map(item=><article key={item[0]}><i>{item[0]}</i><span><b>{item[1]}</b><small>{item[2]}</small></span></article>)}<Link className="modal-primary" href="/account">查看完整用户中心</Link></div>}
   </section></div>;
 }

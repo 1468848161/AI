@@ -178,6 +178,7 @@ flowchart TD
     Nginx -->|ai.example.com| Frontend["AI SaaS · 127.0.0.1:3000"]
     Nginx -->|api.example.com| Gateway["New API · 127.0.0.1:3001"]
     Frontend -->|Docker 内网| Gateway
+    Frontend --> Commerce[(灵感商城 SQLite)]
     Gateway --> PostgreSQL
     Gateway --> Redis
 ```
@@ -190,6 +191,7 @@ flowchart TD
 | `redis_data` | Redis AOF、缓存与会话数据 |
 | `new_api_data` | New API 本地运行数据 |
 | `new_api_logs` | New API 文件日志 |
+| `ai_saas_data` | 灵感模板售价、用户余额、购买授权、订单与资金流水 |
 
 停止服务但保留数据：
 
@@ -207,7 +209,12 @@ docker compose --env-file .env down
 bash scripts/backup-stack.sh
 ```
 
-备份文件保存在 `backups/new-api-时间.sql.gz`，权限受当前用户和 `umask 077` 保护。建议每天执行并同步到另一台服务器或对象存储。
+脚本会生成两个一致性备份：
+
+- `backups/new-api-时间.sql.gz`：New API PostgreSQL；
+- `backups/ai-saas-commerce-时间.sqlite`：灵感商城售价、余额、订单与授权。
+
+文件权限受当前用户和 `umask 077` 保护。建议每天执行并同步到另一台服务器或对象存储。
 
 恢复数据库会覆盖现有业务数据。维护窗口内执行：
 
@@ -217,6 +224,16 @@ gunzip -c backups/new-api-YYYYMMDDTHHMMSSZ.sql.gz \
   | docker compose --env-file .env exec -T postgres \
       sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
 docker compose --env-file .env start new-api ai-saas
+```
+
+恢复灵感商城会覆盖当前售价、余额、购买授权和订单。先停止前端，再把确认过的快照写回持久化卷：
+
+```bash
+docker compose --env-file .env stop ai-saas
+docker compose --env-file .env run --rm --no-deps --user root \
+  -v "$PWD/backups/ai-saas-commerce-YYYYMMDDTHHMMSSZ.sqlite:/restore.sqlite:ro" \
+  ai-saas node -e 'const f=require("node:fs");for(const s of ["","-wal","-shm"]){try{f.unlinkSync("/app/data/commerce.sqlite"+s)}catch(e){if(e.code!=="ENOENT")throw e}}f.copyFileSync("/restore.sqlite","/app/data/commerce.sqlite");f.chownSync("/app/data/commerce.sqlite",1001,1001)'
+docker compose --env-file .env start ai-saas
 ```
 
 恢复前应先对当前数据库再做一次备份。
@@ -259,6 +276,10 @@ cp .env.example .env.local
 ```env
 NEW_API_BASE_URL=http://127.0.0.1:3001
 NEW_API_ADMIN_TOKEN=sk-your-token
+SAAS_SESSION_SECRET=至少64位随机十六进制字符串
+SAAS_ADMIN_KEY=后台灵感商品管理密钥
+SAAS_DATABASE_PATH=storage/commerce.sqlite
+SAAS_COOKIE_SECURE=false
 ```
 
 启动：
@@ -269,7 +290,7 @@ pnpm dev
 
 ## 12. Cloudflare/Sites 部署说明
 
-`pnpm build:sites` 只构建 AI SaaS 前端，不能把 PostgreSQL、Redis 和 New API 一起部署到 Cloudflare Worker。云端前端必须把 `NEW_API_BASE_URL` 配置成公网 HTTPS New API 地址。
+`pnpm build:sites` 只构建 AI SaaS 展示前端，不能把 PostgreSQL、Redis、Node SQLite 灵感交易层和 New API 一起部署到 Cloudflare Worker。云端前端必须为交易接口另接兼容数据库，并把 `NEW_API_BASE_URL` 配置成公网 HTTPS New API 地址。
 
 完整的一体化部署请使用本仓库 Docker Compose。
 
@@ -320,5 +341,7 @@ docker compose --env-file .env up -d --force-recreate
 - [ ] New API 已启用 Secure Cookie 并配置可信 Origin
 - [ ] 前端使用独立、限额、可撤销的 New API Token
 - [ ] New API 渠道密钥只保存在服务端
-- [ ] 已验证数据库备份和恢复流程
+- [ ] `SAAS_SESSION_SECRET` 与 `SAAS_ADMIN_KEY` 已随机生成且未泄露
+- [ ] `SAAS_COOKIE_SECURE=true`（HTTPS 正式环境）
+- [ ] 已验证 PostgreSQL 与灵感商城 SQLite 的备份和恢复流程
 - [ ] 已设置监控、磁盘告警、日志轮转和异地备份
